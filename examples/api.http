@@ -1,0 +1,188 @@
+@baseUrl = http://localhost:4000/api/v1
+@token = paste-token-here
+
+### Register the first admin
+POST {{baseUrl}}/auth/register
+Content-Type: application/json
+
+{
+  "name": "Owner",
+  "email": "owner@mksbuilder.local",
+  "password": "ChangeMe123!"
+}
+
+### Login
+POST {{baseUrl}}/auth/login
+Content-Type: application/json
+
+{
+  "email": "owner@mksbuilder.local",
+  "password": "ChangeMe123!"
+}
+
+### Forgot password
+# The reset token is emailed to this address. Copy it from the inbox.
+POST {{baseUrl}}/auth/forgot-password
+Content-Type: application/json
+
+{
+  "email": "owner@mksbuilder.local"
+}
+
+### Reset password
+POST {{baseUrl}}/auth/reset-password
+Content-Type: application/json
+
+{
+  "token": "paste-the-token-from-the-email",
+  "newPassword": "NewPass123!"
+}
+
+### Profile
+GET {{baseUrl}}/auth/me
+Authorization: Bearer {{token}}
+
+### Dashboard
+GET {{baseUrl}}/dashboard
+Authorization: Bearer {{token}}
+
+### Create department
+POST {{baseUrl}}/departments
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Site Execution",
+  "description": "Engineers and supervisors"
+}
+
+### Create project
+POST {{baseUrl}}/projects
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "name": "Riverfront Apartments",
+  "clientName": "Agarwal Constructions",
+  "clientPhone": "9876543210",
+  "startDate": "2026-04-01",
+  "expectedEndDate": "2027-12-31",
+  "budgetAmount": 25000000,
+  "clientAmount": 8000000,
+  "city": "Lucknow",
+  "status": "active"
+}
+
+### Create site
+POST {{baseUrl}}/sites
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "projectId": "PROJECT_ID",
+  "name": "Tower A",
+  "city": "Lucknow",
+  "startDate": "2026-04-01"
+}
+
+### Create employee
+POST {{baseUrl}}/employees
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "fullName": "Ravi Kumar",
+  "phone": "9811111111",
+  "departmentId": "DEPARTMENT_ID",
+  "designation": "Site Supervisor",
+  "employmentType": "permanent",
+  "joiningDate": "2026-04-01",
+  "salary": {
+    "payBasis": "monthly",
+    "baseAmount": 28000,
+    "allowances": [{ "name": "HRA", "amount": 4000 }]
+  },
+  "siteId": "SITE_ID"
+}
+
+### Mark attendance
+POST {{baseUrl}}/attendance
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "employeeId": "EMPLOYEE_ID",
+  "date": "2026-04-02",
+  "status": "present",
+  "siteId": "SITE_ID",
+  "checkIn": "09:00",
+  "checkOut": "18:00",
+  "overtimeHours": 1,
+  "remarks": "Tower A day shift"
+}
+
+### Mark a whole site for one day
+POST {{baseUrl}}/attendance/bulk
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "date": "2026-04-03",
+  "siteId": "SITE_ID",
+  "entries": [
+    { "employeeId": "EMPLOYEE_ID", "status": "present", "checkIn": "09:00", "checkOut": "18:00" }
+  ]
+}
+
+### Record a salary sheet (does not pay the employee)
+POST {{baseUrl}}/accounts/salaries
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "employeeId": "EMPLOYEE_ID",
+  "projectId": "PROJECT_ID",
+  "siteId": "SITE_ID",
+  "periodMonth": 4,
+  "periodYear": 2026,
+  "deductions": [{ "name": "Advance recovery", "amount": 2000 }],
+  "extras": [{ "name": "Overtime", "amount": 1500 }],
+  "amountPaid": 25000,
+  "recordStatus": "recorded",
+  "remarks": "Cash paid at site. This ERP only stores the figure."
+}
+
+### Record an extra payment outside the salary sheet
+POST {{baseUrl}}/accounts/expenses
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "category": "employee_extra",
+  "amount": 1000,
+  "expenseDate": "2026-04-18",
+  "employeeId": "EMPLOYEE_ID",
+  "projectId": "PROJECT_ID",
+  "payeeName": "Ravi Kumar",
+  "description": "Sunday overtime paid in cash",
+  "paymentModeNote": "cash"
+}
+
+### Employee statement
+GET {{baseUrl}}/accounts/employees/EMPLOYEE_ID/statement?from=2026-04-01&to=2026-04-30
+Authorization: Bearer {{token}}
+
+### Receive cement into the main store
+POST {{baseUrl}}/inventory/movements
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "type": "receipt",
+  "itemId": "ITEM_ID",
+  "quantity": 100,
+  "toLocationId": "MAIN_STORE_ID",
+  "unitCost": 380,
+  "reference": "GRN-14",
+  "remarks": "Received from Sharma Traders"
+}

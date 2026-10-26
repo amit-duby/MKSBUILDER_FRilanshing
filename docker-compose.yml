@@ -1,0 +1,12 @@
+services:
+  mongo:
+    image: mongo:7
+    container_name: mks-erp-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mks_erp_mongo:/data/db
+    restart: unless-stopped
+
+volumes:
+  mks_erp_mongo:
