@@ -574,6 +574,65 @@ const spec = {
         body: jsonBody({ reason: 'Entered for the wrong employee' }),
       }),
     },
+    '/accounts/impress': {
+      get: operation('Accounts', 'List impress entries with given, local receive, brought amount (still with them)', {
+        parameters: [...paging, query('employeeId', objectId), query('siteId', objectId), query('from', { type: 'string', format: 'date' }), query('to', { type: 'string', format: 'date' })],
+      }),
+      post: operation('Accounts', 'Create an impress entry', {
+        status: '201',
+        body: jsonBody({
+          date: '2026-10-30',
+          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          description: 'Site petty cash',
+          given: 10000,
+          notes: 'For local purchases',
+        }),
+      }),
+    },
+    '/accounts/impress/{id}': {
+      get: operation('Accounts', 'Get an impress entry', { parameters: [pathParam()] }),
+      patch: operation('Accounts', 'Update an impress entry', {
+        parameters: [pathParam()],
+        body: jsonBody({ given: 12000, notes: 'Top-up' }),
+      }),
+      delete: operation('Accounts', 'Delete an impress entry', { parameters: [pathParam()] }),
+    },
+    '/accounts/impress/{id}/void': {
+      post: operation('Accounts', 'Void an impress entry', {
+        parameters: [pathParam()],
+        body: jsonBody({ reason: 'Entered for the wrong site' }),
+      }),
+    },
+    '/accounts/local-expenses': {
+      get: operation('Accounts', 'List local expenses', {
+        parameters: [...paging, query('employeeId', objectId), query('siteId', objectId), query('paymentMode', { type: 'string' }), query('from', { type: 'string', format: 'date' }), query('to', { type: 'string', format: 'date' })],
+      }),
+      post: operation('Accounts', 'Create a local expense', {
+        status: '201',
+        body: jsonBody({
+          date: '2026-10-30',
+          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          cashGiven: 2000,
+          expenseDetails: 'Tea, nails, and local transport',
+          returnAmount: 150,
+          paymentMode: 'cash',
+        }),
+      }),
+    },
+    '/accounts/local-expenses/employees/{employeeId}/site': {
+      get: operation('Accounts', 'Related site for a selected employee', {
+        parameters: [pathParam('employeeId')],
+      }),
+    },
+    '/accounts/local-expenses/{id}': {
+      get: operation('Accounts', 'Get a local expense', { parameters: [pathParam()] }),
+      patch: operation('Accounts', 'Update a local expense', {
+        parameters: [pathParam()],
+        body: jsonBody({ returnAmount: 100, expenseDetails: 'Corrected details' }),
+      }),
+      delete: operation('Accounts', 'Delete a local expense', { parameters: [pathParam()] }),
+    },
   },
 };
 

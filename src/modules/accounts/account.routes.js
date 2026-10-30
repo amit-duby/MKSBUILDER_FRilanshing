@@ -1,6 +1,7 @@
 const express = require('express');
 const validate = require('../../common/middleware/validate');
 const { advanceUpload } = require('../../common/middleware/advanceUpload');
+const { localExpenseUpload } = require('../../common/middleware/localExpenseUpload');
 const schema = require('./account.validation');
 const controller = require('./account.controller');
 
@@ -28,5 +29,23 @@ router.get('/advances/:id', validate(schema.byId), controller.getAdvance);
 router.patch('/advances/:id', advanceUpload, validate(schema.updateAdvance), controller.updateAdvance);
 router.post('/advances/:id/recover', validate(schema.recoverAdvance), controller.recoverAdvance);
 router.post('/advances/:id/void', validate(schema.voidAdvance), controller.voidAdvance);
+
+router.get('/impress', validate(schema.listImpress), controller.listImpress);
+router.post('/impress', validate(schema.createImpress), controller.createImpress);
+router.get('/impress/:id', validate(schema.byId), controller.getImpress);
+router.patch('/impress/:id', validate(schema.updateImpress), controller.updateImpress);
+router.delete('/impress/:id', validate(schema.byId), controller.deleteImpress);
+router.post('/impress/:id/void', validate(schema.voidImpress), controller.voidImpress);
+
+router.get('/local-expenses', validate(schema.listLocalExpenses), controller.listLocalExpenses);
+router.post('/local-expenses', localExpenseUpload, validate(schema.createLocalExpense), controller.createLocalExpense);
+router.get(
+  '/local-expenses/employees/:employeeId/site',
+  validate(schema.employeeSite),
+  controller.employeeRelatedSite
+);
+router.get('/local-expenses/:id', validate(schema.byId), controller.getLocalExpense);
+router.patch('/local-expenses/:id', localExpenseUpload, validate(schema.updateLocalExpense), controller.updateLocalExpense);
+router.delete('/local-expenses/:id', validate(schema.byId), controller.deleteLocalExpense);
 
 module.exports = router;

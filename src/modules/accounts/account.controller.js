@@ -4,6 +4,8 @@ const salaryService = require('./salary.service');
 const expenseService = require('./expense.service');
 const statementService = require('./statement.service');
 const advanceService = require('./advance.service');
+const impressService = require('./impress.service');
+const localExpenseService = require('./localExpense.service');
 
 const listSalaries = asyncHandler(async (req, res) => {
   const result = await salaryService.list(req.query);
@@ -98,6 +100,72 @@ const voidAdvance = asyncHandler(async (req, res) => {
   return ok(res, data, 'Advance request voided');
 });
 
+const listImpress = asyncHandler(async (req, res) => {
+  const result = await impressService.list(req.query);
+  return ok(res, {
+    items: result.items,
+    totals: result.totals,
+  }, 'Impress entries fetched', result.meta);
+});
+
+const createImpress = asyncHandler(async (req, res) => {
+  const data = await impressService.create(req.body, req.user);
+  return created(res, data, 'Impress entry saved');
+});
+
+const getImpress = asyncHandler(async (req, res) => {
+  const data = await impressService.getById(req.params.id);
+  return ok(res, data, 'Impress entry fetched');
+});
+
+const updateImpress = asyncHandler(async (req, res) => {
+  const data = await impressService.update(req.params.id, req.body);
+  return ok(res, data, 'Impress entry updated');
+});
+
+const voidImpress = asyncHandler(async (req, res) => {
+  const data = await impressService.voidRecord(req.params.id, req.body);
+  return ok(res, data, 'Impress entry voided');
+});
+
+const deleteImpress = asyncHandler(async (req, res) => {
+  await impressService.remove(req.params.id);
+  return ok(res, null, 'Impress entry deleted');
+});
+
+const listLocalExpenses = asyncHandler(async (req, res) => {
+  const result = await localExpenseService.list(req.query);
+  return ok(res, {
+    items: result.items,
+    totals: result.totals,
+  }, 'Local expenses fetched', result.meta);
+});
+
+const createLocalExpense = asyncHandler(async (req, res) => {
+  const data = await localExpenseService.create(req.body, req.user);
+  return created(res, data, 'Local expense saved');
+});
+
+const getLocalExpense = asyncHandler(async (req, res) => {
+  const data = await localExpenseService.getById(req.params.id);
+  return ok(res, data, 'Local expense fetched');
+});
+
+const updateLocalExpense = asyncHandler(async (req, res) => {
+  const data = await localExpenseService.update(req.params.id, req.body);
+  return ok(res, data, 'Local expense updated');
+});
+
+const deleteLocalExpense = asyncHandler(async (req, res) => {
+  await localExpenseService.remove(req.params.id);
+  return ok(res, null, 'Local expense deleted');
+});
+
+const employeeRelatedSite = asyncHandler(async (req, res) => {
+  const data = await localExpenseService.employeeRelatedSite(req.params.employeeId);
+  return ok(res, data, 'Related site fetched');
+});
+
 module.exports = {
   listSalaries,
   createSalary,
@@ -117,4 +185,16 @@ module.exports = {
   updateAdvance,
   recoverAdvance,
   voidAdvance,
+  listImpress,
+  createImpress,
+  getImpress,
+  updateImpress,
+  voidImpress,
+  deleteImpress,
+  listLocalExpenses,
+  createLocalExpense,
+  getLocalExpense,
+  updateLocalExpense,
+  deleteLocalExpense,
+  employeeRelatedSite,
 };

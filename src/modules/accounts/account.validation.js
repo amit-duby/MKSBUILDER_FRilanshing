@@ -166,4 +166,81 @@ module.exports = {
     }),
   }),
   voidAdvance: requestSchema({ params: idParams, body: voidBody }),
+  listImpress: requestSchema({
+    query: listQuery({
+      ...includeVoid,
+      employeeId: objectId.optional(),
+      siteId: objectId.optional(),
+      from: dateValue.optional(),
+      to: dateValue.optional(),
+    }),
+  }),
+  createImpress: requestSchema({
+    body: z.object({
+      date: dateValue.optional(),
+      employeeId: objectId,
+      siteId: objectId,
+      description: shortText(500),
+      given: coercedMoney.refine((value) => value > 0, {
+        message: 'Given amount must be greater than zero',
+      }),
+      notes: optionalText(500),
+    }),
+  }),
+  updateImpress: requestSchema({
+    params: idParams,
+    body: z.object({
+      date: dateValue.optional(),
+      employeeId: objectId.optional(),
+      siteId: objectId.optional(),
+      description: shortText(500).optional(),
+      given: coercedMoney.refine((value) => value > 0, {
+        message: 'Given amount must be greater than zero',
+      }).optional(),
+      notes: optionalText(500),
+    }),
+  }),
+  voidImpress: requestSchema({ params: idParams, body: voidBody }),
+  listLocalExpenses: requestSchema({
+    query: listQuery({
+      ...includeVoid,
+      employeeId: objectId.optional(),
+      siteId: objectId.optional(),
+      paymentMode: z.enum(PAYMENT_MODE_NOTES).optional(),
+      from: dateValue.optional(),
+      to: dateValue.optional(),
+    }),
+  }),
+  createLocalExpense: requestSchema({
+    body: z.object({
+      date: dateValue.optional(),
+      employeeId: objectId,
+      siteId: objectId.optional(),
+      cashGiven: coercedMoney.refine((value) => value > 0, {
+        message: 'Cash given must be greater than zero',
+      }),
+      expenseDetails: shortText(1000),
+      returnAmount: coercedMoney.optional(),
+      paymentMode: z.enum(PAYMENT_MODE_NOTES),
+      receipt: z.string().trim().min(1).max(500).nullable().optional(),
+    }),
+  }),
+  updateLocalExpense: requestSchema({
+    params: idParams,
+    body: z.object({
+      date: dateValue.optional(),
+      employeeId: objectId.optional(),
+      siteId: objectId.optional(),
+      cashGiven: coercedMoney.refine((value) => value > 0, {
+        message: 'Cash given must be greater than zero',
+      }).optional(),
+      expenseDetails: shortText(1000).optional(),
+      returnAmount: coercedMoney.optional(),
+      paymentMode: z.enum(PAYMENT_MODE_NOTES).optional(),
+      receipt: z.string().trim().min(1).max(500).nullable().optional(),
+    }),
+  }),
+  employeeSite: requestSchema({
+    params: z.object({ employeeId: objectId }),
+  }),
 };

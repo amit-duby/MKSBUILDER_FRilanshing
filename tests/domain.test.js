@@ -5,6 +5,7 @@ const { assertSalaryPatchAllowed } = require('../src/modules/accounts/salaryLock
 const { assertExpenseShape } = require('../src/modules/accounts/expenseRules');
 const { planStockMovement, reversePlan } = require('../src/modules/inventory/stockPlan');
 const { resolveRange } = require('../src/common/utils/helpers');
+const { allocateBalances } = require('../src/modules/accounts/impressMath');
 
 describe('salary sheet math', () => {
   it('keeps gross, extras, deductions, and the recorded amount paid apart', () => {
@@ -141,5 +142,19 @@ describe('report range', () => {
       () => resolveRange({ from: '2026-05-10', to: '2026-05-01' }),
       (error) => error.code === 'BAD_REQUEST'
     );
+  });
+});
+
+describe('impress brought amount', () => {
+  it('is given impress minus local receive, still with them', () => {
+    const employee = 'emp-1';
+    const site = 'site-1';
+    const balances = allocateBalances(
+      [{ _id: 'imp-1', employee, site, given: 10000, date: '2026-10-01' }],
+      [{ employee, site, cashGiven: 8000, returnAmount: 2000, date: '2026-10-05' }]
+    );
+    const row = balances.get('imp-1');
+    assert.equal(row.localReceiveAmount, 6000);
+    assert.equal(row.broughtAmount, 4000);
   });
 });
