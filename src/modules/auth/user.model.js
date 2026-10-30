@@ -11,6 +11,7 @@ const userSchema = new mongoose.Schema(
     passwordResetTokenHash: { type: String, select: false },
     passwordResetExpiresAt: { type: Date, select: false },
     role: { type: String, enum: ['admin'], default: 'admin' },
+    avatar: { type: String, default: null },
     isActive: { type: Boolean, default: true },
   },
   { timestamps: true, collection: COLLECTIONS.users }

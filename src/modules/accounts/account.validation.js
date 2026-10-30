@@ -77,6 +77,29 @@ const voidBody = z.object({
   reason: z.string().trim().min(5).max(300),
 });
 
+const coercedMoney = z.coerce
+  .number()
+  .finite()
+  .min(0)
+  .max(999999999.99)
+  .refine((value) => Math.abs(value * 100 - Math.round(value * 100)) < 1e-6, {
+    message: 'Use at most 2 decimal places',
+  });
+
+const advanceBody = z.object({
+  employeeId: objectId,
+  monthlySalary: coercedMoney.optional(),
+  requestDate: dateValue.optional(),
+  advanceAmount: coercedMoney.refine((value) => value > 0, {
+    message: 'Advance amount must be greater than zero',
+  }),
+  reasonForAdvance: shortText(500),
+  attachment: z.string().trim().min(1).max(500).nullable().optional(),
+  employeeRemarks: optionalText(500),
+});
+
+const advanceUpdate = advanceBody.partial();
+
 const rangeQuery = {
   from: dateValue.optional(),
   to: dateValue.optional(),
@@ -121,4 +144,26 @@ module.exports = {
       to: dateValue.optional(),
     }),
   }),
+  listAdvances: requestSchema({
+    query: listQuery({
+      ...includeVoid,
+      employeeId: objectId.optional(),
+      departmentId: objectId.optional(),
+      from: dateValue.optional(),
+      to: dateValue.optional(),
+    }),
+  }),
+  createAdvance: requestSchema({ body: advanceBody }),
+  updateAdvance: requestSchema({ params: idParams, body: advanceUpdate }),
+  recoverAdvance: requestSchema({
+    params: idParams,
+    body: z.object({
+      amount: coercedMoney.refine((value) => value > 0, {
+        message: 'Recovered amount must be greater than zero',
+      }),
+      recoveredAt: dateValue.optional(),
+      remarks: optionalText(300),
+    }),
+  }),
+  voidAdvance: requestSchema({ params: idParams, body: voidBody }),
 };

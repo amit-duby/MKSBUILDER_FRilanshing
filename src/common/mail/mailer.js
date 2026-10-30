@@ -1,8 +1,15 @@
+const { Resend } = require('resend');
 const { getConfig } = require('../../config/env');
 const AppError = require('../errors/AppError');
 const logger = require('../utils/logger');
 
 let testInbox = [];
+let client = null;
+let clientKey = '';
+
+if (process.env.NODE_ENV !== 'test') {
+  fetch('https://api.resend.com', { method: 'GET' }).catch(() => {});
+}
 
 function lastTestMail() {
   return testInbox.at(-1) || null;
@@ -19,9 +26,9 @@ function assertResend(config) {
   return config.resend;
 }
 
-async function sendMail({ to, subject, text }) {
+async function sendMail({ to, subject, text, html }) {
   const config = getConfig();
-  const message = { to, subject, text };
+  const message = { to, subject, text, html };
 
   if (config.NODE_ENV === 'test') {
     testInbox.push(message);
@@ -31,13 +38,16 @@ async function sendMail({ to, subject, text }) {
   const resendConfig = assertResend(config);
 
   try {
-    const { Resend } = await import('resend');
-    const resend = new Resend(resendConfig.apiKey);
-    const result = await resend.emails.send({
+    if (!client || clientKey !== resendConfig.apiKey) {
+      client = new Resend(resendConfig.apiKey);
+      clientKey = resendConfig.apiKey;
+    }
+    const result = await client.emails.send({
       from: resendConfig.from,
       to: [to],
       subject,
       text,
+      html,
     });
 
     if (result && result.error) {

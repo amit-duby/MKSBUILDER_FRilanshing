@@ -16,6 +16,7 @@ const projectSchema = new mongoose.Schema(
     budgetAmount: { type: Number, min: 0 },
     clientAmount: { type: Number, min: 0 },
     clientPendingAmount: { type: Number },
+    moneySpent: { type: Number, min: 0, default: 0 },
     currency: { type: String, default: CURRENCY },
     address: { type: String, trim: true, maxlength: 300, default: '' },
     city: { type: String, trim: true, maxlength: 80, default: '' },

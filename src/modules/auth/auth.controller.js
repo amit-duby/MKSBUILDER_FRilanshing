@@ -17,18 +17,23 @@ const me = asyncHandler(async (req, res) => {
   return ok(res, data, 'Profile fetched');
 });
 
+const updateAvatar = asyncHandler(async (req, res) => {
+  const data = await authService.updateAvatar(req.user.id, req.file);
+  return ok(res, data, 'Avatar updated');
+});
+
 const logout = asyncHandler(async (req, res) => {
   await authService.logout(req.user.id);
   return ok(res, null, 'Logged out');
 });
 
 const forgotPassword = asyncHandler(async (req, res) => {
-  const data = await authService.forgotPassword(req.body);
+  const data = await authService.forgotPassword(req.body, `${req.protocol}://${req.get('host')}`);
   return ok(res, data, 'Password reset email sent');
 });
 
 const resetPassword = asyncHandler(async (req, res) => {
-  const data = await authService.resetPassword(req.body);
+  const data = await authService.resetPassword(req.params.token, req.body);
   return ok(res, data, 'Password reset');
 });
 
@@ -37,4 +42,4 @@ const changePassword = asyncHandler(async (req, res) => {
   return ok(res, data, 'Password changed');
 });
 
-module.exports = { register, login, me, logout, forgotPassword, resetPassword, changePassword };
+module.exports = { register, login, me, updateAvatar, logout, forgotPassword, resetPassword, changePassword };

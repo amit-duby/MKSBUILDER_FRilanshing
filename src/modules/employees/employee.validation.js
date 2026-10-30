@@ -14,6 +14,32 @@ const {
   amountLine,
 } = require('../../common/validators/zod');
 
+const ifscCode = z
+  .string()
+  .trim()
+  .transform((value) => value.replace(/[\s-]/g, '').toUpperCase())
+  .refine(
+    (value) => value === '' || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(value),
+    'Use 11 characters: 4 letters, then 0, then 6 letters or digits'
+  );
+
+const accountNumber = z
+  .string()
+  .trim()
+  .regex(/^[0-9]{9,18}$/, 'Account number must be 9 to 18 digits');
+
+const photoPath = z.string().trim().min(1).max(500);
+
+const identityShape = {
+  idType: optionalText(40),
+  idNumber: optionalText(40),
+  profilePhoto: photoPath.nullable().optional(),
+  idPhotos: z.array(photoPath).max(6).optional(),
+  bankName: optionalText(120),
+  accountNumber: accountNumber.optional(),
+  ifscCode: ifscCode.optional(),
+};
+
 const salaryShape = {
   payBasis: z.enum(PAY_BASIS).optional(),
   baseAmount: money,
@@ -34,6 +60,7 @@ const createBody = z.object({
   salary: z.object(salaryShape),
   notes: optionalText(1000),
   siteId: objectId.optional(),
+  ...identityShape,
 }).superRefine((data, ctx) => {
   if (data.status === 'resigned' && !data.relievingDate) {
     ctx.addIssue({
@@ -68,6 +95,14 @@ const updateBody = z.object({
     allowances: z.array(amountLine).max(20).optional(),
   }).optional(),
   notes: optionalText(1000),
+  siteId: objectId.nullable().optional(),
+  idType: optionalText(40),
+  idNumber: optionalText(40).nullable(),
+  profilePhoto: photoPath.nullable().optional(),
+  idPhotos: z.array(photoPath).max(6).optional(),
+  bankName: optionalText(120),
+  accountNumber: accountNumber.nullable().optional(),
+  ifscCode: ifscCode.nullable().optional(),
 });
 
 const assignBody = z.object({

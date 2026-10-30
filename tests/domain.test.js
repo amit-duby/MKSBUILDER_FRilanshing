@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const { computeSalary } = require('../src/modules/accounts/salaryMath');
 const { assertSalaryPatchAllowed } = require('../src/modules/accounts/salaryLock');
 const { assertExpenseShape } = require('../src/modules/accounts/expenseRules');
-const { planStockMovement } = require('../src/modules/inventory/stockPlan');
+const { planStockMovement, reversePlan } = require('../src/modules/inventory/stockPlan');
 const { resolveRange } = require('../src/common/utils/helpers');
 
 describe('salary sheet math', () => {
@@ -106,15 +106,21 @@ describe('stock movement plan', () => {
     assert.equal(plan.decrease.length, 0);
   });
 
-  it('refuses a transfer to the same location and an issue without stock', () => {
+  it('refuses a transfer to the same location and issues against item stock when no location is sent', () => {
     assert.throws(
       () => planStockMovement({ type: 'transfer', quantity: 2, fromLocationId: 'a', toLocationId: 'a' }),
       (error) => error.statusCode === 400
     );
-    assert.throws(
-      () => planStockMovement({ type: 'issue', quantity: 2 }),
-      (error) => error.code === 'BAD_REQUEST'
-    );
+    const plan = planStockMovement({ type: 'issue', quantity: 2 });
+    assert.equal(plan.decrease[0].locationId, null);
+    assert.equal(plan.decrease[0].quantity, 2);
+  });
+
+  it('reverses a receipt into a decrease', () => {
+    const reversed = reversePlan(planStockMovement({ type: 'receipt', quantity: 8, toLocationId: 'loc-1' }));
+    assert.equal(reversed.decrease[0].locationId, 'loc-1');
+    assert.equal(reversed.decrease[0].quantity, 8);
+    assert.equal(reversed.increase.length, 0);
   });
 
   it('decreases stock for an adjustment', () => {

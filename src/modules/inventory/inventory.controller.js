@@ -23,7 +23,11 @@ const locations = buildController(inventory.locations, {
 
 const listStock = asyncHandler(async (req, res) => {
   const result = await inventory.stock.list(req.query);
-  return ok(res, result.items, 'Stock balances fetched', result.meta);
+  return ok(res, {
+    items: result.items,
+    counts: result.counts,
+    lowItems: result.lowItems,
+  }, 'Stock balances fetched', result.meta);
 });
 
 const lowStock = asyncHandler(async (req, res) => {
@@ -32,8 +36,13 @@ const lowStock = asyncHandler(async (req, res) => {
 });
 
 const listMovements = asyncHandler(async (req, res) => {
-  const result = await inventory.movements.list(req.query);
+  const result = await inventory.movements.listMovements(req.query);
   return ok(res, result.items, 'Stock movements fetched', result.meta);
+});
+
+const listIssues = asyncHandler(async (req, res) => {
+  const result = await inventory.movements.listIssues(req.query);
+  return ok(res, result.items, 'Stock issues fetched', result.meta);
 });
 
 const createMovement = asyncHandler(async (req, res) => {
@@ -46,12 +55,31 @@ const getMovement = asyncHandler(async (req, res) => {
   return ok(res, data, 'Stock movement fetched');
 });
 
+const getIssue = asyncHandler(async (req, res) => {
+  const data = await inventory.movements.getIssue(req.params.id);
+  return ok(res, data, 'Stock issue fetched');
+});
+
+const updateMovement = asyncHandler(async (req, res) => {
+  const data = await inventory.movements.update(req.params.id, req.body, req.user);
+  return ok(res, data, 'Stock movement updated');
+});
+
+const updateIssue = asyncHandler(async (req, res) => {
+  const data = await inventory.movements.updateIssue(req.params.id, req.body, req.user);
+  return ok(res, data, 'Stock issue updated');
+});
+
 module.exports = {
   items,
   locations,
   listStock,
   lowStock,
   listMovements,
+  listIssues,
   createMovement,
   getMovement,
+  getIssue,
+  updateMovement,
+  updateIssue,
 };

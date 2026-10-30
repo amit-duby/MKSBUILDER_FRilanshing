@@ -3,6 +3,7 @@ const { ok, created } = require('../../common/utils/apiResponse');
 const salaryService = require('./salary.service');
 const expenseService = require('./expense.service');
 const statementService = require('./statement.service');
+const advanceService = require('./advance.service');
 
 const listSalaries = asyncHandler(async (req, res) => {
   const result = await salaryService.list(req.query);
@@ -64,6 +65,39 @@ const statement = asyncHandler(async (req, res) => {
   return ok(res, data, 'Employee statement fetched');
 });
 
+const listAdvances = asyncHandler(async (req, res) => {
+  const result = await advanceService.list(req.query);
+  return ok(res, {
+    items: result.items,
+    totals: result.totals,
+  }, 'Advance requests fetched', result.meta);
+});
+
+const createAdvance = asyncHandler(async (req, res) => {
+  const data = await advanceService.create(req.body, req.user);
+  return created(res, data, 'Advance request saved');
+});
+
+const getAdvance = asyncHandler(async (req, res) => {
+  const data = await advanceService.getById(req.params.id);
+  return ok(res, data, 'Advance request fetched');
+});
+
+const updateAdvance = asyncHandler(async (req, res) => {
+  const data = await advanceService.update(req.params.id, req.body);
+  return ok(res, data, 'Advance request updated');
+});
+
+const recoverAdvance = asyncHandler(async (req, res) => {
+  const data = await advanceService.recover(req.params.id, req.body, req.user);
+  return ok(res, data, 'Advance recovery recorded');
+});
+
+const voidAdvance = asyncHandler(async (req, res) => {
+  const data = await advanceService.voidRecord(req.params.id, req.body);
+  return ok(res, data, 'Advance request voided');
+});
+
 module.exports = {
   listSalaries,
   createSalary,
@@ -77,4 +111,10 @@ module.exports = {
   voidExpense,
   summary,
   statement,
+  listAdvances,
+  createAdvance,
+  getAdvance,
+  updateAdvance,
+  recoverAdvance,
+  voidAdvance,
 };

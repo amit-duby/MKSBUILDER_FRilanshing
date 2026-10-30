@@ -21,7 +21,8 @@ Content-Type: application/json
 }
 
 ### Forgot password
-# The reset token is emailed to this address. Copy it from the inbox.
+# Open http://127.0.0.1:4000/forgot-password in a browser, or call this API.
+# The email contains a reset link: http://127.0.0.1:4000/password/reset/<token>
 POST {{baseUrl}}/auth/forgot-password
 Content-Type: application/json
 
@@ -30,17 +31,34 @@ Content-Type: application/json
 }
 
 ### Reset password
-POST {{baseUrl}}/auth/reset-password
+# Token is the last part of the email link: /password/reset/<token>
+POST {{baseUrl}}/auth/reset-password/paste-the-token-from-the-email-link
 Content-Type: application/json
 
 {
-  "token": "paste-the-token-from-the-email",
-  "newPassword": "NewPass123!"
+  "password": "NewPass123!",
+  "confirmPassword": "NewPass123!"
 }
 
 ### Profile
 GET {{baseUrl}}/auth/me
 Authorization: Bearer {{token}}
+
+### Change password
+POST {{baseUrl}}/auth/change-password
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "currentPassword": "ChangeMe123!",
+  "newPassword": "NewPass123!",
+  "confirmPassword": "NewPass123!"
+}
+
+### Upload avatar
+# Postman: Body → form-data, key avatar, type File. JPEG, PNG, or WebP, max 2 MB.
+# POST {{baseUrl}}/auth/avatar
+# Authorization: Bearer {{token}}
 
 ### Dashboard
 GET {{baseUrl}}/dashboard

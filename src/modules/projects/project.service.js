@@ -29,6 +29,7 @@ const UPDATE_FIELDS = [
   'actualEndDate',
   'budgetAmount',
   'clientAmount',
+  'moneySpent',
   'address',
   'city',
   'state',
@@ -44,6 +45,7 @@ function pendingClientAmount(budgetAmount, clientAmount) {
 function withClientPending(doc) {
   const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
   json.clientPendingAmount = pendingClientAmount(json.budgetAmount, json.clientAmount);
+  json.moneySpent = json.moneySpent == null ? 0 : roundMoney(json.moneySpent);
   return json;
 }
 
@@ -75,6 +77,7 @@ async function create(body) {
     expectedEndDate: body.expectedEndDate,
     budgetAmount: body.budgetAmount,
     clientAmount: body.clientAmount,
+    moneySpent: body.moneySpent ?? 0,
     clientPendingAmount: pendingClientAmount(body.budgetAmount, body.clientAmount),
     currency: CURRENCY,
     address: body.address || '',
@@ -146,6 +149,7 @@ async function update(id, body) {
   }
 
   assignDefined(doc, body, UPDATE_FIELDS);
+  if (doc.moneySpent == null) doc.moneySpent = 0;
   doc.clientPendingAmount = pendingClientAmount(doc.budgetAmount, doc.clientAmount);
   if (body.status === 'completed' && !doc.actualEndDate) doc.actualEndDate = new Date();
   assertDates(doc);
@@ -279,6 +283,7 @@ async function summary(id) {
       budgetAmount,
       clientAmount,
       clientPendingAmount,
+      moneySpent: project.moneySpent == null ? 0 : roundMoney(project.moneySpent),
       budgetRemaining: budgetAmount === null ? null : budgetAmount - recordedCost,
     },
   };

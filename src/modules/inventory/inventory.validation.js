@@ -1,7 +1,9 @@
 const {
   UNITS,
   MOVEMENT_TYPES,
+  MATERIAL_CONDITIONS,
   ADJUSTMENT_DIRECTIONS,
+  PAYMENT_MODE_NOTES,
   STOCK_LOCATION_TYPES,
 } = require('../../config/constants');
 const {
@@ -66,22 +68,37 @@ const movementBody = z.object({
   toLocationId: objectId.optional(),
   projectId: objectId.optional(),
   siteId: objectId.optional(),
+  employeeId: objectId.optional(),
+  vehicleTypeId: objectId.optional(),
   unitCost: money.optional(),
+  vendorName: optionalText(120),
+  condition: z.enum(MATERIAL_CONDITIONS).optional(),
+  billNo: optionalText(80),
+  challanNo: optionalText(80),
+  materialReceiptPhoto: z.string().trim().min(1).max(500).nullable().optional(),
+  paymentMode: z.enum(PAYMENT_MODE_NOTES).optional(),
+  address: optionalText(300),
   movementDate: dateValue.optional(),
   reference: optionalText(80),
   remarks: optionalText(500),
 }).superRefine((data, ctx) => {
-  if ((data.type === 'receipt' || data.type === 'return') && !data.toLocationId) {
-    ctx.addIssue({ code: 'custom', path: ['toLocationId'], message: 'Destination location is required' });
+  if (data.type === 'receipt' && !(data.vendorName && data.vendorName.trim())) {
+    ctx.addIssue({ code: 'custom', path: ['vendorName'], message: 'Vendor name is required for an inward receipt' });
   }
-  if (data.type === 'issue' && !data.fromLocationId) {
-    ctx.addIssue({ code: 'custom', path: ['fromLocationId'], message: 'Source location is required' });
+  if (data.type === 'receipt' && !data.condition) {
+    ctx.addIssue({ code: 'custom', path: ['condition'], message: 'Material condition is required for an inward receipt' });
+  }
+  if (data.type === 'receipt' && !(data.billNo || data.challanNo)) {
+    ctx.addIssue({ code: 'custom', path: ['billNo'], message: 'Bill number or challan number is required for an inward receipt' });
+  }
+  if (data.type === 'receipt' && !data.paymentMode) {
+    ctx.addIssue({ code: 'custom', path: ['paymentMode'], message: 'Mode of payment is required for an inward receipt' });
   }
   if (data.type === 'transfer' && (!data.fromLocationId || !data.toLocationId)) {
-    ctx.addIssue({ code: 'custom', path: ['fromLocationId'], message: 'Source and destination locations are required' });
+    ctx.addIssue({ code: 'custom', path: ['toLocationId'], message: 'Transfer needs both a source and a destination location' });
   }
-  if (data.type === 'adjustment' && (!data.direction || (!data.fromLocationId && !data.toLocationId))) {
-    ctx.addIssue({ code: 'custom', path: ['direction'], message: 'Direction and location are required' });
+  if (data.type === 'adjustment' && !data.direction) {
+    ctx.addIssue({ code: 'custom', path: ['direction'], message: 'Adjustment direction is required' });
   }
 });
 
@@ -111,14 +128,67 @@ module.exports = {
   }),
   listMovements: requestSchema({
     query: listQuery({
-      type: z.enum(MOVEMENT_TYPES).optional(),
       itemId: objectId.optional(),
       locationId: objectId.optional(),
       projectId: objectId.optional(),
       siteId: objectId.optional(),
+      employeeId: objectId.optional(),
+      vehicleTypeId: objectId.optional(),
+      from: dateValue.optional(),
+      to: dateValue.optional(),
+    }),
+  }),
+  listIssues: requestSchema({
+    query: listQuery({
+      itemId: objectId.optional(),
+      locationId: objectId.optional(),
+      projectId: objectId.optional(),
+      siteId: objectId.optional(),
+      employeeId: objectId.optional(),
+      vehicleTypeId: objectId.optional(),
       from: dateValue.optional(),
       to: dateValue.optional(),
     }),
   }),
   createMovement: requestSchema({ body: movementBody }),
+  updateMovement: requestSchema({
+    params: idParams,
+    body: z.object({
+      itemId: objectId.optional(),
+      quantity: quantity.optional(),
+      direction: z.enum(ADJUSTMENT_DIRECTIONS).optional(),
+      fromLocationId: objectId.optional(),
+      toLocationId: objectId.optional(),
+      projectId: objectId.nullable().optional(),
+      siteId: objectId.nullable().optional(),
+      employeeId: objectId.nullable().optional(),
+      vehicleTypeId: objectId.nullable().optional(),
+      unitCost: money.optional(),
+      vendorName: optionalText(120),
+      condition: z.enum(MATERIAL_CONDITIONS).optional(),
+      billNo: optionalText(80),
+      challanNo: optionalText(80),
+      materialReceiptPhoto: z.string().trim().min(1).max(500).nullable().optional(),
+      paymentMode: z.enum(PAYMENT_MODE_NOTES).optional(),
+      address: optionalText(300),
+      movementDate: dateValue.optional(),
+      reference: optionalText(80),
+      remarks: optionalText(500),
+    }),
+  }),
+  updateIssue: requestSchema({
+    params: idParams,
+    body: z.object({
+      itemId: objectId.optional(),
+      quantity: quantity.optional(),
+      fromLocationId: objectId.optional(),
+      projectId: objectId.nullable().optional(),
+      siteId: objectId.nullable().optional(),
+      employeeId: objectId.nullable().optional(),
+      vehicleTypeId: objectId.nullable().optional(),
+      movementDate: dateValue.optional(),
+      reference: optionalText(80),
+      remarks: optionalText(500),
+    }),
+  }),
 };

@@ -7,19 +7,16 @@ function planStockMovement({ type, quantity, direction, fromLocationId, toLocati
     throw new AppError('Quantity must be greater than zero', 400, 'BAD_REQUEST');
   }
 
-  const single = (locationId) => [{ locationId: String(locationId), quantity: qty }];
+  const single = (locationId) => [{
+    locationId: locationId ? String(locationId) : null,
+    quantity: qty,
+  }];
 
   if (type === 'receipt' || type === 'return') {
-    if (!toLocationId) {
-      throw new AppError('A destination location is required', 400, 'BAD_REQUEST');
-    }
     return { quantity: qty, increase: single(toLocationId), decrease: [] };
   }
 
   if (type === 'issue') {
-    if (!fromLocationId) {
-      throw new AppError('A source location is required', 400, 'BAD_REQUEST');
-    }
     return { quantity: qty, increase: [], decrease: single(fromLocationId) };
   }
 
@@ -38,10 +35,10 @@ function planStockMovement({ type, quantity, direction, fromLocationId, toLocati
   }
 
   if (type === 'adjustment') {
-    const locationId = toLocationId || fromLocationId;
-    if (!locationId || !direction) {
-      throw new AppError('Adjustment needs a location and a direction', 400, 'BAD_REQUEST');
+    if (!direction) {
+      throw new AppError('Adjustment needs a direction', 400, 'BAD_REQUEST');
     }
+    const locationId = toLocationId || fromLocationId || null;
     if (direction === 'increase') {
       return { quantity: qty, increase: single(locationId), decrease: [] };
     }
@@ -54,4 +51,16 @@ function planStockMovement({ type, quantity, direction, fromLocationId, toLocati
   throw new AppError('Unsupported stock movement', 400, 'BAD_REQUEST');
 }
 
-module.exports = { planStockMovement };
+function reversePlan(plan) {
+  return {
+    quantity: plan.quantity,
+    increase: (plan.decrease || []).map((step) => ({ ...step })),
+    decrease: (plan.increase || []).map((step) => ({ ...step })),
+  };
+}
+
+function planQuantity(steps) {
+  return (steps || []).reduce((sum, step) => sum + Number(step.quantity || 0), 0);
+}
+
+module.exports = { planStockMovement, reversePlan, planQuantity };

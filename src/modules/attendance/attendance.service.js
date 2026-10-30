@@ -3,13 +3,14 @@ const { COLLECTIONS } = require('../../config/constants');
 const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const requireDoc = require('../../common/utils/requireDoc');
-const { nextCode } = require('../../common/utils/sequence');
+const { nextCode, nextCodes } = require('../../common/utils/sequence');
 const { resolveProjectSite } = require('../../common/utils/projectSite');
 const {
   containsRegex,
   parseSort,
   resolveRange,
-  startOfUtcDay,
+  startOfBusinessDay,
+  calendarDayLabel,
   endOfUtcDay,
 } = require('../../common/utils/helpers');
 const { workedDayValue, resolveClockTimes, assertAttendanceTimes } = require('./attendanceRules');
@@ -39,25 +40,46 @@ function present(id) {
   return Attendance.findById(id).populate(POPULATE);
 }
 
-function assertEmploymentWindow(employee, attendanceDate) {
-  const joining = startOfUtcDay(new Date(employee.joiningDate));
-  if (attendanceDate < joining) {
-    throw new AppError('Attendance cannot be before the joining date', 400, 'BAD_REQUEST');
-  }
-  if (employee.relievingDate) {
-    const relieving = endOfUtcDay(new Date(employee.relievingDate));
-    if (attendanceDate > relieving) {
-      throw new AppError('Attendance cannot be after the relieving date', 400, 'BAD_REQUEST');
-    }
-  }
+function publicEmployee(employee) {
+  if (!employee) return null;
+  return {
+    id: employee.id,
+    code: employee.code,
+    fullName: employee.fullName,
+    designation: employee.designation,
+    status: employee.status,
+    department: employee.department,
+  };
 }
 
-async function buildPayload(input, user) {
-  const employee = await requireDoc(Employee, input.employeeId, 'Employee', { isDeleted: false });
-  const attendanceDate = startOfUtcDay(new Date(input.date));
-  assertEmploymentWindow(employee, attendanceDate);
+function publicSite(site) {
+  if (!site) return null;
+  return {
+    id: site.id,
+    name: site.name,
+    code: site.code,
+    status: site.status,
+  };
+}
 
-  const links = await resolveProjectSite(input.projectId || undefined, input.siteId || undefined);
+function publicProject(project) {
+  if (!project) return null;
+  return {
+    id: project.id,
+    name: project.name,
+    code: project.code,
+  };
+}
+
+function presentLoaded(doc, refs = {}) {
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+  json.employee = publicEmployee(refs.employee);
+  json.site = publicSite(refs.site);
+  json.project = publicProject(refs.project);
+  return json;
+}
+
+function attendancePayload(input, employee, attendanceDate, links, user) {
   const times = resolveClockTimes(attendanceDate, input.checkIn, input.checkOut);
   const overtimeHours = input.overtimeHours || 0;
   assertAttendanceTimes({
@@ -82,16 +104,46 @@ async function buildPayload(input, user) {
   };
 }
 
-async function savePayload(payload) {
-  const existing = await Attendance.findOne({
-    employee: payload.employee,
-    attendanceDate: payload.attendanceDate,
-  });
+function assertEmploymentWindow(employee, attendanceDate) {
+  const joining = startOfBusinessDay(employee.joiningDate);
+  if (attendanceDate < joining) {
+    throw new AppError(
+      `Attendance for ${employee.fullName} (${employee.code}) cannot be before the joining date ${calendarDayLabel(employee.joiningDate)}`,
+      400,
+      'BAD_REQUEST'
+    );
+  }
+  if (employee.relievingDate) {
+    const relieving = startOfBusinessDay(employee.relievingDate);
+    if (attendanceDate > relieving) {
+      throw new AppError(
+        `Attendance for ${employee.fullName} (${employee.code}) cannot be after the relieving date ${calendarDayLabel(employee.relievingDate)}`,
+        400,
+        'BAD_REQUEST'
+      );
+    }
+  }
+}
 
+async function loadMarkContext(input) {
+  const attendanceDate = startOfBusinessDay(input.date);
+  const [employee, links, existing] = await Promise.all([
+    requireDoc(Employee, input.employeeId, 'Employee', { isDeleted: false }),
+    resolveProjectSite(input.projectId || undefined, input.siteId || undefined),
+    Attendance.findOne({
+      employee: input.employeeId,
+      attendanceDate,
+    }),
+  ]);
+  assertEmploymentWindow(employee, attendanceDate);
+  return { employee, links, existing, attendanceDate };
+}
+
+async function savePayload(payload, refs, existing) {
   if (existing) {
     Object.assign(existing, payload);
     await existing.save();
-    return { created: false, record: await present(existing.id) };
+    return { created: false, record: presentLoaded(existing, refs) };
   }
 
   try {
@@ -99,7 +151,7 @@ async function savePayload(payload) {
       ...payload,
       code: await nextCode('attendance', 'ATT'),
     });
-    return { created: true, record: await present(doc.id) };
+    return { created: true, record: presentLoaded(doc, refs) };
   } catch (error) {
     if (error.code !== 11000) throw error;
     const raced = await Attendance.findOne({
@@ -109,15 +161,15 @@ async function savePayload(payload) {
     if (!raced) throw error;
     Object.assign(raced, payload);
     await raced.save();
-    return { created: false, record: await present(raced.id) };
+    return { created: false, record: presentLoaded(raced, refs) };
   }
 }
 
 function dateFilter(query) {
-  if (query.date) return startOfUtcDay(new Date(query.date));
+  if (query.date) return startOfBusinessDay(query.date);
   if (query.from || query.to) {
-    const from = query.from ? startOfUtcDay(new Date(query.from)) : new Date(0);
-    const to = query.to ? endOfUtcDay(new Date(query.to)) : new Date();
+    const from = query.from ? startOfBusinessDay(query.from) : new Date(0);
+    const to = query.to ? endOfUtcDay(startOfBusinessDay(query.to)) : new Date();
     if (from > to) throw new AppError('from must be earlier than or equal to to', 400, 'BAD_REQUEST');
     return { $gte: from, $lte: to };
   }
@@ -143,8 +195,9 @@ async function applyPersonFilters(filter, query) {
 
 const service = {
   async mark(body, user) {
-    const payload = await buildPayload(body, user);
-    return savePayload(payload);
+    const { employee, links, existing, attendanceDate } = await loadMarkContext(body);
+    const payload = attendancePayload(body, employee, attendanceDate, links, user);
+    return savePayload(payload, { employee, site: links.site, project: links.project }, existing);
   },
 
   async bulk(body, user) {
@@ -156,23 +209,94 @@ const service = {
       seen.add(entry.employeeId);
     }
 
-    const payloads = [];
+    const attendanceDate = startOfBusinessDay(body.date);
+    const employeeIds = body.entries.map((entry) => entry.employeeId);
+    const linkCache = new Map();
+    const linkJobs = [];
+
     for (const entry of body.entries) {
-      payloads.push(await buildPayload({
-        ...entry,
-        date: body.date,
-        projectId: entry.projectId || body.projectId,
-        siteId: entry.siteId || body.siteId,
-      }, user));
+      const projectId = entry.projectId || body.projectId;
+      const siteId = entry.siteId || body.siteId;
+      const key = `${projectId || ''}:${siteId || ''}`;
+      if (!linkCache.has(key)) {
+        linkCache.set(key, null);
+        linkJobs.push(
+          resolveProjectSite(projectId, siteId).then((links) => {
+            linkCache.set(key, links);
+          })
+        );
+      }
     }
 
+    const [employees, existingRows] = await Promise.all([
+      Employee.find({ _id: { $in: employeeIds }, isDeleted: false }),
+      Attendance.find({ employee: { $in: employeeIds }, attendanceDate }),
+      Promise.all(linkJobs),
+    ]);
+
+    const employeeById = new Map(employees.map((employee) => [String(employee._id), employee]));
+    const existingByEmployee = new Map(existingRows.map((row) => [String(row.employee), row]));
+
+    const prepared = body.entries.map((entry) => {
+      const employee = employeeById.get(entry.employeeId);
+      if (!employee) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+      assertEmploymentWindow(employee, attendanceDate);
+      const links = linkCache.get(`${entry.projectId || body.projectId || ''}:${entry.siteId || body.siteId || ''}`);
+      return {
+        employee,
+        links,
+        payload: attendancePayload(
+          { ...entry, projectId: entry.projectId || body.projectId, siteId: entry.siteId || body.siteId },
+          employee,
+          attendanceDate,
+          links,
+          user
+        ),
+        existing: existingByEmployee.get(entry.employeeId) || null,
+      };
+    });
+
+    const insertCount = prepared.reduce((count, row) => count + (row.existing ? 0 : 1), 0);
+    const codes = await nextCodes('attendance', 'ATT', insertCount);
+    let codeIndex = 0;
+    const ops = [];
     const records = [];
-    for (const payload of payloads) {
-      const saved = await savePayload(payload);
-      records.push(saved.record);
+    const now = new Date();
+
+    for (const row of prepared) {
+      const refs = { employee: row.employee, site: row.links.site, project: row.links.project };
+      if (row.existing) {
+        Object.assign(row.existing, row.payload);
+        ops.push({
+          updateOne: {
+            filter: { _id: row.existing._id },
+            update: { $set: row.payload },
+          },
+        });
+        records.push(presentLoaded(row.existing, refs));
+        continue;
+      }
+
+      const doc = new Attendance({
+        ...row.payload,
+        code: codes[codeIndex],
+        createdAt: now,
+        updatedAt: now,
+      });
+      codeIndex += 1;
+      ops.push({
+        insertOne: {
+          document: doc.toObject({ depopulate: true, versionKey: false }),
+        },
+      });
+      records.push(presentLoaded(doc, refs));
     }
 
-    return { date: startOfUtcDay(new Date(body.date)), count: records.length, records };
+    if (ops.length) {
+      await Attendance.bulkWrite(ops, { ordered: false, timestamps: true });
+    }
+
+    return { date: attendanceDate, count: records.length, records };
   },
 
   async list(query) {
@@ -206,7 +330,7 @@ const service = {
 
     const nextStatus = body.status || doc.status;
     const nonWorking = ['absent', 'leave', 'weekly_off', 'holiday'].includes(nextStatus);
-    const payload = await buildPayload({
+    const input = {
       employeeId: String(doc.employee),
       date: body.date || doc.attendanceDate,
       status: nextStatus,
@@ -216,12 +340,16 @@ const service = {
       checkOut: body.checkOut !== undefined ? body.checkOut : (nonWorking ? null : doc.checkOut),
       overtimeHours: body.overtimeHours !== undefined ? body.overtimeHours : (nonWorking ? 0 : doc.overtimeHours),
       remarks: body.remarks !== undefined ? body.remarks : doc.remarks,
-    }, user);
+    };
+    const attendanceDate = startOfBusinessDay(input.date);
+    const [employee, links] = await Promise.all([
+      requireDoc(Employee, input.employeeId, 'Employee', { isDeleted: false }),
+      resolveProjectSite(input.projectId || undefined, input.siteId || undefined),
+    ]);
+    assertEmploymentWindow(employee, attendanceDate);
+    const payload = attendancePayload(input, employee, attendanceDate, links, user);
 
-    if (
-      payload.attendanceDate.getTime() !== doc.attendanceDate.getTime()
-      || String(payload.employee) !== String(doc.employee)
-    ) {
+    if (payload.attendanceDate.getTime() !== doc.attendanceDate.getTime()) {
       const clash = await Attendance.findOne({
         employee: payload.employee,
         attendanceDate: payload.attendanceDate,
@@ -234,7 +362,7 @@ const service = {
 
     Object.assign(doc, payload);
     await doc.save();
-    return present(doc.id);
+    return presentLoaded(doc, { employee, site: links.site, project: links.project });
   },
 
   async remove(id) {
@@ -244,7 +372,7 @@ const service = {
   },
 
   async register(query) {
-    const attendanceDate = startOfUtcDay(new Date(query.date));
+    const attendanceDate = startOfBusinessDay(query.date);
     const filter = { isDeleted: false };
     if (query.departmentId) filter.department = query.departmentId;
     if (query.siteId) {
@@ -267,7 +395,10 @@ const service = {
     const marks = await Attendance.find({
       attendanceDate,
       employee: { $in: result.items.map((employee) => employee._id) },
-    }).populate(POPULATE);
+    }).populate([
+      { path: 'site', select: 'name code status' },
+      { path: 'project', select: 'name code' },
+    ]);
 
     const byEmployee = new Map(marks.map((mark) => {
       const employeeId = mark.employee && mark.employee._id

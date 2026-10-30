@@ -1,5 +1,6 @@
 const express = require('express');
 const validate = require('../../common/middleware/validate');
+const { advanceUpload } = require('../../common/middleware/advanceUpload');
 const schema = require('./account.validation');
 const controller = require('./account.controller');
 
@@ -20,5 +21,12 @@ router.post('/expenses', validate(schema.createExpense), controller.createExpens
 router.get('/expenses/:id', validate(schema.byId), controller.getExpense);
 router.patch('/expenses/:id', validate(schema.updateExpense), controller.updateExpense);
 router.post('/expenses/:id/void', validate(schema.voidExpense), controller.voidExpense);
+
+router.get('/advances', validate(schema.listAdvances), controller.listAdvances);
+router.post('/advances', advanceUpload, validate(schema.createAdvance), controller.createAdvance);
+router.get('/advances/:id', validate(schema.byId), controller.getAdvance);
+router.patch('/advances/:id', advanceUpload, validate(schema.updateAdvance), controller.updateAdvance);
+router.post('/advances/:id/recover', validate(schema.recoverAdvance), controller.recoverAdvance);
+router.post('/advances/:id/void', validate(schema.voidAdvance), controller.voidAdvance);
 
 module.exports = router;

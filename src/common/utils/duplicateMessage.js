@@ -13,6 +13,9 @@ function duplicateMessage(error) {
   if (keys.includes('email')) {
     return 'This email is already in use';
   }
+  if (keys.includes('idNumber')) {
+    return 'This ID number is already in use';
+  }
   if (keys.includes('sku')) {
     return 'An item with this SKU already exists';
   }

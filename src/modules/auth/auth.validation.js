@@ -27,9 +27,20 @@ const forgotPassword = requestSchema({
 });
 
 const resetPassword = requestSchema({
-  body: z.object({
+  params: z.object({
     token: z.string().trim().min(32).max(256),
-    newPassword: z.string().min(8).max(128),
+  }),
+  body: z.object({
+    password: z.string().min(8).max(128),
+    confirmPassword: z.string().min(8).max(128),
+  }).superRefine((data, ctx) => {
+    if (data.confirmPassword !== data.password) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['confirmPassword'],
+        message: 'password does not match',
+      });
+    }
   }),
 });
 
@@ -37,6 +48,15 @@ const changePassword = requestSchema({
   body: z.object({
     currentPassword: z.string().min(8).max(128),
     newPassword: z.string().min(8).max(128),
+    confirmPassword: z.string().min(8).max(128),
+  }).superRefine((data, ctx) => {
+    if (data.confirmPassword !== data.newPassword) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['confirmPassword'],
+        message: 'Confirm password must match the new password',
+      });
+    }
   }),
 });
 

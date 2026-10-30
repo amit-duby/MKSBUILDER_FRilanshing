@@ -32,8 +32,20 @@ function archivedFilter(query) {
   return { isDeleted: false };
 }
 
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
 function startOfUtcDay(date) {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function startOfBusinessDay(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  const ist = new Date(date.getTime() + IST_OFFSET_MS);
+  return new Date(Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate()));
+}
+
+function calendarDayLabel(value) {
+  return startOfBusinessDay(value).toISOString().slice(0, 10);
 }
 
 function endOfUtcDay(date) {

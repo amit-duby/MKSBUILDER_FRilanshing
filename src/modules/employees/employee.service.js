@@ -15,7 +15,10 @@ const Site = require('../sites/site.model');
 
 const repo = new BaseRepository(Employee);
 const SORT_FIELDS = ['fullName', 'code', 'joiningDate', 'createdAt', 'designation'];
-const POPULATE = [{ path: 'department', select: 'name code isActive' }];
+const POPULATE = [
+  { path: 'department', select: 'name code isActive' },
+  { path: 'site', select: 'name code status project' },
+];
 
 async function getActive(id) {
   const doc = await Employee.findById(id).populate(POPULATE);
@@ -120,6 +123,14 @@ async function create(body) {
     address: body.address || '',
     department: body.departmentId,
     designation: body.designation,
+    idType: body.idType || '',
+    idNumber: body.idNumber || null,
+    profilePhoto: body.profilePhoto || null,
+    idPhotos: body.idPhotos || [],
+    site: body.siteId || null,
+    bankName: body.bankName || '',
+    accountNumber: body.accountNumber || '',
+    ifscCode: body.ifscCode || '',
     employmentType: body.employmentType,
     status: body.status || 'active',
     joiningDate: body.joiningDate,
@@ -165,6 +176,7 @@ async function list(query) {
       { code: pattern },
       { phone: pattern },
       { designation: pattern },
+      { idNumber: pattern },
     ];
   }
 
@@ -208,11 +220,30 @@ async function update(id, body) {
   if (Object.prototype.hasOwnProperty.call(body, 'relievingDate')) {
     doc.relievingDate = body.relievingDate || undefined;
   }
+  if (Object.prototype.hasOwnProperty.call(body, 'siteId')) {
+    if (body.siteId) await requireDoc(Site, body.siteId, 'Site', { isDeleted: false });
+    doc.site = body.siteId || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'idNumber')) {
+    doc.idNumber = body.idNumber || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'accountNumber')) {
+    doc.accountNumber = body.accountNumber || '';
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'ifscCode')) {
+    doc.ifscCode = body.ifscCode || '';
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'profilePhoto')) {
+    doc.profilePhoto = body.profilePhoto || null;
+  }
 
   assignDefined(doc, body, [
     'fullName',
     'address',
     'designation',
+    'idType',
+    'idPhotos',
+    'bankName',
     'employmentType',
     'status',
     'joiningDate',

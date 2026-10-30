@@ -270,7 +270,10 @@ async function main() {
     }), 201, 'issue');
 
     const stock = expectStatus(await call(base, 'GET', `/inventory/stock?itemId=${item.id}`, { token }), 200, 'stock');
-    assert.equal(stock.data[0].quantity, 6);
+    assert.equal(stock.data.items[0].quantity, 6);
+    assert.equal(stock.data.items[0].received, 10);
+    assert.equal(stock.data.items[0].issued, 4);
+    assert.equal(stock.data.counts.items >= 1, true);
 
     const low = expectStatus(await call(base, 'GET', '/inventory/stock/low', { token }), 200, 'low stock');
     assert.equal(low.data.some((row) => row.sku === item.sku), true);
@@ -330,16 +333,16 @@ async function main() {
 
     const mail = lastTestMail();
     assert.equal(mail && mail.to, 'smoke-owner@mksbuilder.local');
-    const emailedToken = (mail.text.match(/Reset token: ([a-f0-9]{64})/) || [])[1];
+    const emailedToken = (mail.text.match(/\/password\/reset\/([a-f0-9]{64})/) || [])[1];
     assert.equal(typeof emailedToken, 'string');
 
-    const badReset = await call(base, 'POST', '/auth/reset-password', {
-      body: { token: 'a'.repeat(64), newPassword: 'SmokePass456!' },
+    const badReset = await call(base, 'POST', `/auth/reset-password/${'a'.repeat(64)}`, {
+      body: { password: 'SmokePass456!', confirmPassword: 'SmokePass456!' },
     });
     assert.equal(badReset.status, 400);
 
-    const reset = expectStatus(await call(base, 'POST', '/auth/reset-password', {
-      body: { token: emailedToken, newPassword: 'SmokePass456!' },
+    const reset = expectStatus(await call(base, 'POST', `/auth/reset-password/${emailedToken}`, {
+      body: { password: 'SmokePass456!', confirmPassword: 'SmokePass456!' },
     }), 200, 'reset password');
     const resetToken = reset.data.token;
 
@@ -348,8 +351,8 @@ async function main() {
     });
     assert.equal(oldPassword.status, 401);
 
-    const reused = await call(base, 'POST', '/auth/reset-password', {
-      body: { token: emailedToken, newPassword: 'SmokePass789!' },
+    const reused = await call(base, 'POST', `/auth/reset-password/${emailedToken}`, {
+      body: { password: 'SmokePass789!', confirmPassword: 'SmokePass789!' },
     });
     assert.equal(reused.status, 400);
 

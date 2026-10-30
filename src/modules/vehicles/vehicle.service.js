@@ -80,10 +80,57 @@ async function voidExpense(expense) {
   await expense.save();
 }
 
+async function loadAssignmentTargets(body) {
+  const [site, driver] = await Promise.all([
+    requireDoc(Site, body.siteId, 'Site', { isDeleted: false }),
+    body.driverId
+      ? requireDoc(Employee, body.driverId, 'Employee', { isDeleted: false })
+      : null,
+  ]);
+  if (site.status !== 'active') {
+    throw new AppError('Vehicles can only be assigned to an active site', 400, 'BAD_REQUEST');
+  }
+  if (driver && driver.status !== 'active') {
+    throw new AppError('Driver must be an active employee', 400, 'BAD_REQUEST');
+  }
+  return { site, driver };
+}
+
+function presentCreatedAssignment(assignment, site, driver) {
+  return {
+    id: assignment.id,
+    vehicle: assignment.vehicle,
+    site: {
+      id: site.id,
+      name: site.name,
+      code: site.code,
+      status: site.status,
+    },
+    project: site.project,
+    driver: driver
+      ? {
+          id: driver.id,
+          fullName: driver.fullName,
+          code: driver.code,
+          designation: driver.designation,
+        }
+      : null,
+    assignedAt: assignment.assignedAt,
+    releasedAt: assignment.releasedAt,
+    remarks: assignment.remarks || '',
+  };
+}
+
 const service = {
   async create(body) {
-    return repo.create({
-      code: await nextCode('vehicle', 'VEH'),
+    const assigning = Boolean(body.siteId);
+    const [code, targets] = await Promise.all([
+      nextCode('vehicle', 'VEH'),
+      assigning ? loadAssignmentTargets(body) : null,
+    ]);
+
+    const vehicle = await repo.create({
+      code,
       registrationNumber: body.registrationNumber,
       type: body.type,
       make: body.make || '',
@@ -95,6 +142,34 @@ const service = {
       documents: body.documents || {},
       notes: body.notes || '',
     });
+
+    if (!assigning) return vehicle;
+
+    let assignment;
+    try {
+      assignment = await Assignment.create({
+        vehicle: vehicle._id,
+        site: targets.site._id,
+        project: targets.site.project,
+        driver: targets.driver && targets.driver._id,
+        assignedAt: body.assignedAt || new Date(),
+        releasedAt: null,
+        remarks: body.remarks || '',
+      });
+      vehicle.status = 'assigned';
+      vehicle.currentAssignment = assignment._id;
+      await vehicle.save();
+    } catch (error) {
+      await Promise.all([
+        Vehicle.deleteOne({ _id: vehicle._id }),
+        assignment ? Assignment.deleteOne({ _id: assignment._id }) : null,
+      ]);
+      throw error;
+    }
+
+    const json = vehicle.toJSON();
+    json.currentAssignment = presentCreatedAssignment(assignment, targets.site, targets.driver);
+    return json;
   },
 
   async list(query) {
@@ -192,18 +267,7 @@ const service = {
       throw new AppError('Only an available vehicle can be assigned', 409, 'CONFLICT');
     }
 
-    const [site, driver] = await Promise.all([
-      requireDoc(Site, body.siteId, 'Site', { isDeleted: false }),
-      body.driverId
-        ? requireDoc(Employee, body.driverId, 'Employee', { isDeleted: false })
-        : null,
-    ]);
-    if (site.status !== 'active') {
-      throw new AppError('Vehicles can only be assigned to an active site', 400, 'BAD_REQUEST');
-    }
-    if (driver && driver.status !== 'active') {
-      throw new AppError('Driver must be an active employee', 400, 'BAD_REQUEST');
-    }
+    const { site, driver } = await loadAssignmentTargets(body);
 
     const assignment = await Assignment.create({
       vehicle: vehicle._id,

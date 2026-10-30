@@ -23,6 +23,11 @@ router.get('/stock/low', validate(schema.listStock), controller.lowStock);
 router.get('/stock', validate(schema.listStock), controller.listStock);
 router.get('/movements', validate(schema.listMovements), controller.listMovements);
 router.post('/movements', validate(schema.createMovement), controller.createMovement);
+router.patch('/movements/:id', validate(schema.updateMovement), controller.updateMovement);
 router.get('/movements/:id', validate(schema.byId), controller.getMovement);
+
+router.get('/issues', validate(schema.listIssues), controller.listIssues);
+router.patch('/issues/:id', validate(schema.updateIssue), controller.updateIssue);
+router.get('/issues/:id', validate(schema.byId), controller.getIssue);
 
 module.exports = router;
