@@ -23,7 +23,13 @@ Books are kept in INR.
 
 ## Run locally
 
-Requirements: Node.js 18 or newer, and MongoDB 7.
+Requirements: Node.js 18 or newer, and MongoDB 7 (local) or a MongoDB Atlas cluster.
+
+Set `MONGODB_URI` in `.env`. Use a local URI or an Atlas `mongodb+srv://` URI:
+
+```
+MONGODB_URI=mongodb+srv://<user>:<password>@<cluster>.mongodb.net/mks_construction_erp?retryWrites=true&w=majority
+```
 
 ```bash
 docker compose up -d

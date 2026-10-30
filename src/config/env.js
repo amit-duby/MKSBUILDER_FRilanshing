@@ -8,10 +8,43 @@ const blankToUndefined = (value) => {
   return value;
 };
 
+function atlasHostFromUri(uri) {
+  return uri
+    .replace(/^mongodb(\+srv)?:\/\//i, '')
+    .replace(/^[^@]+@/, '')
+    .split('/')[0]
+    .split('?')[0]
+    .split(',')[0];
+}
+
+const mongoUri = z.string().min(1, 'MONGODB_URI is required').superRefine((uri, ctx) => {
+  if (!/^mongodb(\+srv)?:\/\//i.test(uri)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'MONGODB_URI must start with mongodb:// or mongodb+srv://',
+    });
+    return;
+  }
+  const host = atlasHostFromUri(uri);
+  if (host.includes('<') || host.includes('>')) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Replace the <cluster> placeholder with the host from Atlas Connect',
+    });
+    return;
+  }
+  if (/^mongodb\+srv:\/\//i.test(uri) && /\.mongodb\.net$/i.test(host) && host.split('.').length < 4) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'Atlas host is incomplete. Use cluster0.xxxxx.mongodb.net from Atlas Connect, not cluster0.mongodb.net',
+    });
+  }
+});
+
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
+  MONGODB_URI: mongoUri,
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().min(1).default('8h'),
   CORS_ORIGIN: z.string().min(1).default('*'),
