@@ -290,13 +290,13 @@ const items = {
   },
 
   async remove(id) {
-    const doc = await getItem(id);
+    const doc = await Item.findById(id);
+    if (!doc) throw new AppError('Item not found', 404, 'NOT_FOUND');
     if (await onHand(doc._id) > 0) {
-      throw new AppError('Issue or transfer remaining stock before archiving this item', 409, 'CONFLICT');
+      throw new AppError('Issue or transfer remaining stock before deleting this item', 409, 'CONFLICT');
     }
-    doc.isDeleted = true;
-    doc.isActive = false;
-    await doc.save();
+    await Balance.deleteMany({ item: doc._id });
+    await doc.deleteOne();
   },
 
   async restore(id) {
@@ -384,18 +384,17 @@ const locations = {
 
   async remove(id) {
     const doc = await Location.findById(id);
-    if (!doc || doc.isDeleted) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
-    if (doc.isSystem) throw new AppError('The main store cannot be archived', 409, 'CONFLICT');
+    if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
+    if (doc.isSystem) throw new AppError('The main store cannot be deleted', 409, 'CONFLICT');
     if (doc.type === 'site_store') {
-      throw new AppError('Archive the site to archive its store', 409, 'CONFLICT');
+      throw new AppError('Delete the site to delete its store', 409, 'CONFLICT');
     }
     const remaining = await Balance.exists({ location: doc._id, quantity: { $gt: 0 } });
     if (remaining) {
-      throw new AppError('Move remaining stock before archiving this location', 409, 'CONFLICT');
+      throw new AppError('Move remaining stock before deleting this location', 409, 'CONFLICT');
     }
-    doc.isDeleted = true;
-    doc.isActive = false;
-    await doc.save();
+    await Balance.deleteMany({ location: doc._id });
+    await doc.deleteOne();
   },
 
   async restore(id) {
@@ -1149,6 +1148,42 @@ const movements = {
 
   async getIssue(id) {
     return movements.getById(id, { expectType: 'issue' });
+  },
+
+  async remove(id, options = {}) {
+    const doc = await Movement.findById(id);
+    if (!doc) throw new AppError('Stock movement not found', 404, 'NOT_FOUND');
+    if (options.expectType && doc.type !== options.expectType) {
+      throw new AppError(`This record is a ${doc.type}, not an ${options.expectType}`, 400, 'BAD_REQUEST');
+    }
+
+    const oldPlan = planStockMovement({
+      type: doc.type,
+      quantity: doc.quantity,
+      direction: doc.direction,
+      fromLocationId: doc.fromLocation,
+      toLocationId: doc.toLocation,
+    });
+    const oldItem = await Item.findById(doc.item);
+    if (!oldItem) throw new AppError('Item not found', 404, 'NOT_FOUND');
+    const oldStockIds = await relatedItemIds(oldItem);
+    const undone = reversePlan(oldPlan);
+    for (const step of oldPlan.decrease) step.itemIds = oldStockIds;
+    for (const step of undone.decrease) step.itemIds = oldStockIds;
+
+    await withOptionalTransaction(async (session) => {
+      await applyPlan(undone, oldItem._id, session);
+      try {
+        await doc.deleteOne(sessionOptions(session));
+      } catch (error) {
+        if (!session) await applyPlan(oldPlan, oldItem._id, null);
+        throw error;
+      }
+    });
+  },
+
+  async removeIssue(id) {
+    return movements.remove(id, { expectType: 'issue' });
   },
 };
 

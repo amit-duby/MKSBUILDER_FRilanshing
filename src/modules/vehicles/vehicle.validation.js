@@ -103,6 +103,11 @@ const maintenanceParams = z.object({
   maintenanceId: objectId,
 });
 
+const fuelLogParams = z.object({
+  id: objectId,
+  fuelLogId: objectId,
+});
+
 module.exports = {
   list: requestSchema({
     query: listQuery({
@@ -123,7 +128,9 @@ module.exports = {
   release: requestSchema({ params: idParams, body: releaseBody }),
   maintenance: requestSchema({ params: idParams, body: maintenanceBody }),
   complete: requestSchema({ params: maintenanceParams, body: completeBody }),
+  deleteMaintenance: requestSchema({ params: maintenanceParams }),
   fuel: requestSchema({ params: idParams, body: fuelBody }),
+  deleteFuel: requestSchema({ params: fuelLogParams }),
   pagedChild: requestSchema({
     params: idParams,
     query: listQuery(),

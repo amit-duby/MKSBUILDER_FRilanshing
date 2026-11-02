@@ -17,8 +17,20 @@ function mongoOptions(uri) {
   };
 }
 
+function withDefaultDatabase(uri) {
+  const text = String(uri || '').trim();
+  const match = text.match(/^(mongodb(?:\+srv)?:\/\/[^/?]+)(\/[^?]*)?(\?.*)?$/i);
+  if (!match) return text;
+  const origin = match[1];
+  const pathname = match[2] || '';
+  const query = match[3] || '';
+  const database = pathname.replace(/^\//, '');
+  if (database) return text;
+  return `${origin}/mks_construction_erp${query}`;
+}
+
 async function connectDatabase(uri) {
-  await mongoose.connect(uri, mongoOptions(uri));
+  await mongoose.connect(withDefaultDatabase(uri), mongoOptions(uri));
 
   logger.info(
     { host: mongoose.connection.host, database: mongoose.connection.name },

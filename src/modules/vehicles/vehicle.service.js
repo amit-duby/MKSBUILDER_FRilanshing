@@ -223,13 +223,14 @@ const service = {
   },
 
   async remove(id) {
-    const doc = await getMutable(id);
-    if (doc.status === 'assigned' || doc.currentAssignment) {
-      throw new AppError('Release the vehicle before archiving it', 409, 'CONFLICT');
-    }
-    doc.isDeleted = true;
-    doc.status = 'inactive';
-    await doc.save();
+    const doc = await Vehicle.findById(id);
+    if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
+    await Promise.all([
+      Assignment.deleteMany({ vehicle: doc._id }),
+      Maintenance.deleteMany({ vehicle: doc._id }),
+      FuelLog.deleteMany({ vehicle: doc._id }),
+    ]);
+    await doc.deleteOne();
   },
 
   async restore(id) {
@@ -537,6 +538,25 @@ const service = {
       sort: { loggedAt: -1 },
       populate: [{ path: 'site', select: 'name code' }],
     });
+  },
+
+  async removeMaintenance(id, maintenanceId) {
+    const vehicle = await getMutable(id);
+    const log = await Maintenance.findOne({ _id: maintenanceId, vehicle: id });
+    if (!log) throw new AppError('Maintenance log not found', 404, 'NOT_FOUND');
+    await log.deleteOne();
+    const stillOpen = await Maintenance.exists({ vehicle: id, completedAt: null });
+    if (!stillOpen && vehicle.status === 'maintenance') {
+      vehicle.status = 'available';
+      await vehicle.save();
+    }
+  },
+
+  async removeFuel(id, fuelLogId) {
+    await getMutable(id);
+    const log = await FuelLog.findOne({ _id: fuelLogId, vehicle: id });
+    if (!log) throw new AppError('Fuel log not found', 404, 'NOT_FOUND');
+    await log.deleteOne();
   },
 };
 

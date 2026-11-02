@@ -2,11 +2,17 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { getConfig } = require('../../config/env');
 const AppError = require('../../common/errors/AppError');
 const { sendMail } = require('../../common/mail/mailer');
 const User = require('./user.model');
+const {
+  issueSession,
+  rotateRefreshToken,
+  revokeUserRefreshTokens,
+  signAccessToken,
+  publicUser,
+} = require('./session');
 
 const BCRYPT_ROUNDS = 10;
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
@@ -23,23 +29,8 @@ function hashResetToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function signToken(user) {
-  const config = getConfig();
-  return jwt.sign(
-    { sub: user.id, tv: user.tokenVersion, email: user.email },
-    config.JWT_SECRET,
-    { expiresIn: config.JWT_EXPIRES_IN }
-  );
-}
-
-function publicUser(user) {
-  return {
-    id: user.id,
-    name: user.name,
-    email: user.email,
-    role: user.role,
-    avatar: user.avatar || null,
-  };
+async function sessionFor(user) {
+  return issueSession(user);
 }
 
 function removeStoredAvatar(publicPath) {
@@ -80,10 +71,7 @@ async function register(body, actor) {
       isActive: true,
     });
 
-    return {
-      token: signToken(user),
-      user: publicUser(user),
-    };
+    return sessionFor(user);
   } catch (error) {
     if (error.code === 11000) {
       throw new AppError('This email is already in use', 409, 'CONFLICT');
@@ -115,8 +103,27 @@ async function login(body) {
     );
   }
 
+  return sessionFor(user);
+}
+
+async function refresh(rawToken) {
+  if (!rawToken) {
+    throw new AppError('Refresh token is required', 401, 'UNAUTHORIZED');
+  }
+  const rotated = await rotateRefreshToken(rawToken);
+  const user = await User.findById(rotated.userId).select('+tokenVersion');
+  if (!user || !user.isActive) {
+    throw new AppError('Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+  }
+  assertAdmin(user);
+  const accessToken = signAccessToken(user);
   return {
-    token: signToken(user),
+    token: accessToken,
+    accessToken,
+    refreshToken: rotated.refresh.token,
+    expiresIn: getConfig().JWT_EXPIRES_IN,
+    refreshExpiresIn: getConfig().JWT_REFRESH_EXPIRES_IN,
+    refreshExpiresAt: rotated.refresh.expiresAt,
     user: publicUser(user),
   };
 }
@@ -152,7 +159,10 @@ async function me(userId) {
 }
 
 async function logout(userId) {
-  await User.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } });
+  await Promise.all([
+    revokeUserRefreshTokens(userId),
+    User.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } }),
+  ]);
 }
 
 async function forgotPassword(body, publicUrl) {
@@ -232,11 +242,40 @@ async function resetPassword(token, body) {
   user.passwordResetTokenHash = undefined;
   user.passwordResetExpiresAt = undefined;
   await user.save();
+  await revokeUserRefreshTokens(user.id);
 
+  return sessionFor(user);
+}
+
+async function listUsers(query) {
+  const page = Number(query.page) || 1;
+  const limit = Number(query.limit) || 20;
+  const filter = {};
+  const [items, total] = await Promise.all([
+    User.find(filter).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit),
+    User.countDocuments(filter),
+  ]);
   return {
-    token: signToken(user),
-    user: publicUser(user),
+    items: items.map(publicUser),
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: total === 0 ? 1 : Math.ceil(total / limit),
+    },
   };
+}
+
+async function remove(id) {
+  const user = await User.findById(id);
+  if (!user) throw new AppError('User not found', 404, 'NOT_FOUND');
+  const remaining = await User.countDocuments({ _id: { $ne: user._id } });
+  if (remaining === 0) {
+    throw new AppError('The last user account cannot be deleted', 409, 'CONFLICT');
+  }
+  removeStoredAvatar(user.avatar);
+  await revokeUserRefreshTokens(user.id);
+  await user.deleteOne();
 }
 
 async function changePassword(userId, body) {
@@ -271,22 +310,23 @@ async function changePassword(userId, body) {
     }
   );
   user.tokenVersion = nextVersion;
+  await revokeUserRefreshTokens(user.id);
 
-  return {
-    token: signToken(user),
-    user: publicUser(user),
-  };
+  return sessionFor(user);
 }
 
 module.exports = {
   register,
   login,
+  refresh,
   me,
   updateAvatar,
   logout,
   forgotPassword,
   resetPassword,
   changePassword,
+  listUsers,
+  remove,
   assertAdmin,
   BCRYPT_ROUNDS,
 };

@@ -76,14 +76,13 @@ async function update(id, body) {
 }
 
 async function remove(id) {
-  const doc = await getActive(id);
+  const doc = await repo.findById(id);
+  if (!doc) throw new AppError('Department not found', 404, 'NOT_FOUND');
   const inUse = await Employee.exists({ department: doc._id, isDeleted: false });
   if (inUse) {
-    throw new AppError('Reassign employees before archiving this department', 409, 'CONFLICT');
+    throw new AppError('Reassign employees before deleting this department', 409, 'CONFLICT');
   }
-  doc.isDeleted = true;
-  doc.isActive = false;
-  await doc.save();
+  await doc.deleteOne();
 }
 
 async function restore(id) {

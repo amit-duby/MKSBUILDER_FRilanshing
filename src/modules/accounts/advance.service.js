@@ -218,4 +218,10 @@ async function voidRecord(id, body) {
   return present(doc.id);
 }
 
-module.exports = { create, list, getById, update, recover, voidRecord };
+async function remove(id) {
+  const doc = await Advance.findById(id);
+  if (!doc) throw new AppError('Advance request not found', 404, 'NOT_FOUND');
+  await doc.deleteOne();
+}
+
+module.exports = { create, list, getById, update, recover, voidRecord, remove };

@@ -147,4 +147,10 @@ async function voidRecord(id, body) {
   return present(doc.id);
 }
 
-module.exports = { create, list, getById, update, voidRecord };
+async function remove(id) {
+  const doc = await Expense.findById(id);
+  if (!doc) throw new AppError('Expense not found', 404, 'NOT_FOUND');
+  await doc.deleteOne();
+}
+
+module.exports = { create, list, getById, update, voidRecord, remove };

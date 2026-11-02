@@ -30,7 +30,7 @@ const update = asyncHandler(async (req, res) => {
 
 const remove = asyncHandler(async (req, res) => {
   await service.remove(req.params.id);
-  return ok(res, null, 'Attendance removed');
+  return ok(res, null, 'Attendance deleted');
 });
 
 const register = asyncHandler(async (req, res) => {

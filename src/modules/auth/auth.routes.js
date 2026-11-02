@@ -16,8 +16,11 @@ const optionalAuthenticate = asyncHandler(async (req, res, next) => {
 
 router.post('/register', loginLimiter, optionalAuthenticate, validate(schema.register), controller.register);
 router.post('/login', loginLimiter, validate(schema.login), controller.login);
+router.post('/refresh', loginLimiter, validate(schema.refresh), controller.refresh);
 router.post('/forgot-password', loginLimiter, validate(schema.forgotPassword), controller.forgotPassword);
 router.post('/reset-password/:token', loginLimiter, validate(schema.resetPassword), controller.resetPassword);
+router.get('/users', asyncHandler(authenticate), validate(schema.listUsers), controller.listUsers);
+router.delete('/users/:id', asyncHandler(authenticate), validate(schema.byId), controller.deleteUser);
 router.get('/me', asyncHandler(authenticate), controller.me);
 router.post('/avatar', asyncHandler(authenticate), avatarUpload, controller.updateAvatar);
 router.post('/logout', asyncHandler(authenticate), controller.logout);

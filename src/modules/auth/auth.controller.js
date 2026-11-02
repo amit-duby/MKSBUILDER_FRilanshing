@@ -1,15 +1,21 @@
 const asyncHandler = require('../../common/utils/asyncHandler');
 const { ok, created } = require('../../common/utils/apiResponse');
 const authService = require('./auth.service');
+const { attachRefreshCookie, clearRefreshCookie, readRefreshToken } = require('./refreshCookie');
 
 const register = asyncHandler(async (req, res) => {
-  const data = await authService.register(req.body, req.user);
+  const data = attachRefreshCookie(res, await authService.register(req.body, req.user));
   return created(res, data, 'Account created');
 });
 
 const login = asyncHandler(async (req, res) => {
-  const data = await authService.login(req.body);
+  const data = attachRefreshCookie(res, await authService.login(req.body));
   return ok(res, data, 'Logged in');
+});
+
+const refresh = asyncHandler(async (req, res) => {
+  const data = attachRefreshCookie(res, await authService.refresh(readRefreshToken(req)));
+  return ok(res, data, 'Token refreshed');
 });
 
 const me = asyncHandler(async (req, res) => {
@@ -24,6 +30,7 @@ const updateAvatar = asyncHandler(async (req, res) => {
 
 const logout = asyncHandler(async (req, res) => {
   await authService.logout(req.user.id);
+  clearRefreshCookie(res);
   return ok(res, null, 'Logged out');
 });
 
@@ -33,13 +40,23 @@ const forgotPassword = asyncHandler(async (req, res) => {
 });
 
 const resetPassword = asyncHandler(async (req, res) => {
-  const data = await authService.resetPassword(req.params.token, req.body);
+  const data = attachRefreshCookie(res, await authService.resetPassword(req.params.token, req.body));
   return ok(res, data, 'Password reset');
 });
 
 const changePassword = asyncHandler(async (req, res) => {
-  const data = await authService.changePassword(req.user.id, req.body);
+  const data = attachRefreshCookie(res, await authService.changePassword(req.user.id, req.body));
   return ok(res, data, 'Password changed');
 });
 
-module.exports = { register, login, me, updateAvatar, logout, forgotPassword, resetPassword, changePassword };
+const listUsers = asyncHandler(async (req, res) => {
+  const result = await authService.listUsers(req.query);
+  return ok(res, result.items, 'Users fetched', result.meta);
+});
+
+const deleteUser = asyncHandler(async (req, res) => {
+  await authService.remove(req.params.id);
+  return ok(res, null, 'User deleted');
+});
+
+module.exports = { register, login, refresh, me, updateAvatar, logout, forgotPassword, resetPassword, changePassword, listUsers, deleteUser };

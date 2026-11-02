@@ -8,7 +8,7 @@ const crud = buildController(service, {
   listed: 'Projects fetched',
   fetched: 'Project fetched',
   updated: 'Project updated',
-  removed: 'Project archived',
+  removed: 'Project deleted',
   restored: 'Project restored',
 });
 

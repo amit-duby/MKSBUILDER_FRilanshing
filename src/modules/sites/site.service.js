@@ -137,35 +137,28 @@ async function update(id, body) {
 }
 
 async function assertStockClear(siteId) {
-  const location = await StockLocation.findOne({ site: siteId, isDeleted: false });
+  const location = await StockLocation.findOne({ site: siteId });
   if (!location) return null;
 
   const remaining = await StockBalance.exists({ location: location._id, quantity: { $gt: 0 } });
   if (remaining) {
-    throw new AppError('Transfer remaining site stock before archiving this site', 409, 'CONFLICT');
+    throw new AppError('Transfer remaining site stock before deleting this site', 409, 'CONFLICT');
   }
   return location;
 }
 
 async function remove(id) {
   const doc = await Site.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Site not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
 
   const location = await assertStockClear(doc._id);
   if (location) {
-    location.isActive = false;
-    location.isDeleted = true;
-    await location.save();
+    await StockBalance.deleteMany({ location: location._id });
+    await location.deleteOne();
   }
 
-  await EmployeeAssignment.updateMany(
-    { site: doc._id, isCurrent: true },
-    { $set: { isCurrent: false, endDate: new Date() } }
-  );
-
-  doc.isDeleted = true;
-  doc.status = 'inactive';
-  await doc.save();
+  await EmployeeAssignment.deleteMany({ site: doc._id });
+  await doc.deleteOne();
 }
 
 async function restore(id) {

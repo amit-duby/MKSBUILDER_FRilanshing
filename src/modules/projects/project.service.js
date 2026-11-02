@@ -159,17 +159,14 @@ async function update(id, body) {
 
 async function remove(id) {
   const [doc, activeSite] = await Promise.all([
-    getActive(id),
+    repo.findById(id),
     Site.exists({ project: id, isDeleted: false, status: 'active' }),
   ]);
+  if (!doc) throw new AppError('Project not found', 404, 'NOT_FOUND');
   if (activeSite) {
-    throw new AppError('Archive or complete active sites before archiving this project', 409, 'CONFLICT');
+    throw new AppError('Delete or complete active sites before deleting this project', 409, 'CONFLICT');
   }
-  doc.isDeleted = true;
-  if (doc.status === 'planning' || doc.status === 'active' || doc.status === 'on_hold') {
-    doc.status = 'cancelled';
-  }
-  await doc.save();
+  await doc.deleteOne();
 }
 
 async function restore(id) {

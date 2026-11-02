@@ -8,7 +8,7 @@ const crud = buildController(service, {
   listed: 'Vehicles fetched',
   fetched: 'Vehicle fetched',
   updated: 'Vehicle updated',
-  removed: 'Vehicle archived',
+  removed: 'Vehicle deleted',
   restored: 'Vehicle restored',
 });
 
@@ -57,6 +57,16 @@ const listFuel = asyncHandler(async (req, res) => {
   return ok(res, result.items, 'Fuel logs fetched', result.meta);
 });
 
+const deleteMaintenance = asyncHandler(async (req, res) => {
+  await service.removeMaintenance(req.params.id, req.params.maintenanceId);
+  return ok(res, null, 'Maintenance log deleted');
+});
+
+const deleteFuel = asyncHandler(async (req, res) => {
+  await service.removeFuel(req.params.id, req.params.fuelLogId);
+  return ok(res, null, 'Fuel log deleted');
+});
+
 module.exports = {
   ...crud,
   alerts,
@@ -68,4 +78,6 @@ module.exports = {
   completeMaintenance,
   addFuel,
   listFuel,
+  deleteMaintenance,
+  deleteFuel,
 };

@@ -1,10 +1,84 @@
+const {
+  PROJECT_STATUS,
+  SITE_STATUS,
+  EMPLOYMENT_TYPES,
+  EMPLOYEE_STATUS,
+  PAY_BASIS,
+  ATTENDANCE_STATUS,
+  SALARY_RECORD_STATUS,
+  STOCK_LOCATION_TYPES,
+  MOVEMENT_TYPES,
+  MATERIAL_CONDITIONS,
+  ADJUSTMENT_DIRECTIONS,
+  UNITS,
+  FUEL_TYPES,
+  MAINTENANCE_TYPES,
+  EXPENSE_CATEGORIES,
+  PAYMENT_MODE_NOTES,
+} = require('../config/constants');
+
 const objectId = {
   type: 'string',
   pattern: '^[a-fA-F\\d]{24}$',
   example: '64b0c0c0c0c0c0c0c0c0c0c0',
+  description: 'MongoDB ObjectId',
 };
 
 const bearer = [{ bearerAuth: [] }];
+
+const money = {
+  type: 'number',
+  minimum: 0,
+  maximum: 999999999.99,
+  description: 'INR amount, at most 2 decimal places',
+};
+
+const positiveMoney = {
+  type: 'number',
+  exclusiveMinimum: 0,
+  maximum: 999999999.99,
+  description: 'INR amount greater than 0, at most 2 decimal places',
+};
+
+const quantity = {
+  type: 'number',
+  exclusiveMinimum: 0,
+  maximum: 100000000,
+  description: 'Positive quantity, at most 3 decimal places',
+};
+
+const dateValue = {
+  type: 'string',
+  format: 'date',
+  example: '2026-04-01',
+};
+
+const clock = {
+  oneOf: [
+    { type: 'string', pattern: '^([01]\\d|2[0-3]):[0-5]\\d$', example: '09:00', description: 'Time as HH:mm' },
+    { type: 'string', format: 'date-time' },
+  ],
+};
+
+const phone = {
+  type: 'string',
+  pattern: '^[0-9+\\-\\s()]{7,20}$',
+  example: '9876543210',
+};
+
+const email = { type: 'string', format: 'email', maxLength: 160, example: 'owner@mksbuilder.local' };
+const password = { type: 'string', minLength: 8, maxLength: 128, example: 'ChangeMe123!' };
+const ifscCode = {
+  type: 'string',
+  description: '11 characters: 4 letters, 0, then 6 letters or digits',
+  example: 'SBIN0001234',
+};
+const bankAccountNumber = {
+  type: 'string',
+  pattern: '^[0-9]{9,18}$',
+  description: '9 to 18 digits',
+  example: '123456789012',
+};
 
 function pathParam(name = 'id') {
   return { name, in: 'path', required: true, schema: objectId };
@@ -14,12 +88,14 @@ function query(name, schema, description) {
   return { name, in: 'query', required: false, schema, description };
 }
 
-function jsonBody(example) {
+function jsonBody(example, schema) {
   return {
     required: true,
     content: {
       'application/json': {
-        schema: { type: 'object' },
+        schema: typeof schema === 'string'
+          ? { $ref: `#/components/schemas/${schema}` }
+          : schema || { type: 'object' },
         example,
       },
     },
@@ -49,6 +125,395 @@ const paging = [
   query('includeArchived', { type: 'boolean' }),
 ];
 
+const amountLine = {
+  type: 'object',
+  required: ['name', 'amount'],
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: 80 },
+    amount: money,
+  },
+};
+
+const schemas = {
+  AmountLine: amountLine,
+  RegisterBody: {
+    type: 'object',
+    required: ['name', 'email', 'password'],
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Owner' },
+      email,
+      password,
+    },
+  },
+  LoginBody: {
+    type: 'object',
+    required: ['email', 'password'],
+    properties: { email, password },
+  },
+  RefreshBody: {
+    type: 'object',
+    properties: {
+      refreshToken: {
+        type: 'string',
+        minLength: 32,
+        maxLength: 256,
+        example: 'paste-refresh-token',
+        description: 'Optional when the HttpOnly refresh_token cookie is sent. JSON body is for Postman and mobile.',
+      },
+    },
+  },
+  ForgotPasswordBody: {
+    type: 'object',
+    required: ['email'],
+    properties: { email },
+  },
+  ResetPasswordBody: {
+    type: 'object',
+    required: ['password', 'confirmPassword'],
+    properties: {
+      password,
+      confirmPassword: { ...password, example: 'NewPass123!' },
+    },
+  },
+  ChangePasswordBody: {
+    type: 'object',
+    required: ['currentPassword', 'newPassword', 'confirmPassword'],
+    properties: {
+      currentPassword: password,
+      newPassword: { ...password, example: 'NewPass123!' },
+      confirmPassword: { ...password, example: 'NewPass123!' },
+    },
+  },
+  DepartmentCreate: {
+    type: 'object',
+    required: ['name'],
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Civil' },
+      description: { type: 'string', maxLength: 500, example: 'Site civil works' },
+      isActive: { type: 'boolean', example: true },
+    },
+  },
+  ProjectCreate: {
+    type: 'object',
+    required: ['name', 'clientName', 'startDate'],
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Riverfront' },
+      clientName: { type: 'string', minLength: 1, maxLength: 120, example: 'City Authority' },
+      clientPhone: phone,
+      description: { type: 'string', maxLength: 2000 },
+      status: { type: 'string', enum: PROJECT_STATUS, example: 'active' },
+      startDate: dateValue,
+      expectedEndDate: dateValue,
+      budgetAmount: { ...money, example: 5000000 },
+      clientAmount: { ...money, example: 1500000 },
+      moneySpent: { ...money, example: 0 },
+      address: { type: 'string', maxLength: 300 },
+      city: { type: 'string', maxLength: 80 },
+      state: { type: 'string', maxLength: 80 },
+      pincode: { type: 'string', maxLength: 12 },
+    },
+  },
+  SiteCreate: {
+    type: 'object',
+    required: ['projectId', 'name', 'startDate'],
+    properties: {
+      projectId: objectId,
+      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Tower A' },
+      address: { type: 'string', maxLength: 300, example: 'Ring Road' },
+      city: { type: 'string', maxLength: 80 },
+      state: { type: 'string', maxLength: 80 },
+      pincode: { type: 'string', maxLength: 12 },
+      status: { type: 'string', enum: SITE_STATUS, example: 'active' },
+      inchargeId: objectId,
+      startDate: dateValue,
+      expectedEndDate: dateValue,
+      notes: { type: 'string', maxLength: 1000 },
+    },
+  },
+  EmployeeSalary: {
+    type: 'object',
+    required: ['baseAmount'],
+    properties: {
+      payBasis: { type: 'string', enum: PAY_BASIS, example: 'monthly' },
+      baseAmount: { ...money, example: 25000 },
+      allowances: { type: 'array', maxItems: 20, items: amountLine },
+    },
+  },
+  EmployeeCreate: {
+    type: 'object',
+    required: ['fullName', 'departmentId', 'designation', 'employmentType', 'joiningDate', 'salary'],
+    properties: {
+      fullName: { type: 'string', minLength: 1, maxLength: 120, example: 'Ravi Kumar' },
+      phone,
+      email: { ...email, example: 'ravi@example.com' },
+      address: { type: 'string', maxLength: 300 },
+      departmentId: objectId,
+      designation: { type: 'string', minLength: 1, maxLength: 80, example: 'Mason' },
+      employmentType: { type: 'string', enum: EMPLOYMENT_TYPES, example: 'permanent' },
+      status: { type: 'string', enum: ['active', 'inactive'], example: 'active' },
+      joiningDate: dateValue,
+      relievingDate: dateValue,
+      salary: { $ref: '#/components/schemas/EmployeeSalary' },
+      notes: { type: 'string', maxLength: 1000 },
+      siteId: objectId,
+      idType: { type: 'string', maxLength: 40, example: 'Aadhaar' },
+      idNumber: { type: 'string', maxLength: 40, example: '123412341234' },
+      profilePhoto: { type: 'string', nullable: true, maxLength: 500 },
+      idPhotos: { type: 'array', maxItems: 6, items: { type: 'string', minLength: 1, maxLength: 500 } },
+      bankName: { type: 'string', maxLength: 120, example: 'State Bank of India' },
+      accountNumber: bankAccountNumber,
+      ifscCode,
+    },
+  },
+  EmployeeAssign: {
+    type: 'object',
+    required: ['siteId'],
+    properties: {
+      siteId: objectId,
+      startDate: dateValue,
+      remarks: { type: 'string', maxLength: 300 },
+    },
+  },
+  AttendanceCreate: {
+    type: 'object',
+    required: ['employeeId', 'date', 'status'],
+    properties: {
+      employeeId: objectId,
+      date: dateValue,
+      status: { type: 'string', enum: ATTENDANCE_STATUS, example: 'present' },
+      projectId: objectId,
+      siteId: objectId,
+      checkIn: clock,
+      checkOut: clock,
+      overtimeHours: { type: 'number', minimum: 0, maximum: 16, example: 1 },
+      remarks: { type: 'string', maxLength: 300 },
+    },
+  },
+  AttendanceBulkEntry: {
+    type: 'object',
+    required: ['employeeId', 'status'],
+    properties: {
+      employeeId: objectId,
+      status: { type: 'string', enum: ATTENDANCE_STATUS, example: 'present' },
+      siteId: objectId,
+      checkIn: clock,
+      checkOut: clock,
+      overtimeHours: { type: 'number', minimum: 0, maximum: 16 },
+      remarks: { type: 'string', maxLength: 300 },
+    },
+  },
+  AttendanceBulkCreate: {
+    type: 'object',
+    required: ['date', 'entries'],
+    properties: {
+      date: dateValue,
+      projectId: objectId,
+      siteId: objectId,
+      entries: {
+        type: 'array',
+        minItems: 1,
+        maxItems: 200,
+        items: { $ref: '#/components/schemas/AttendanceBulkEntry' },
+      },
+    },
+  },
+  InventoryItemCreate: {
+    type: 'object',
+    required: ['name', 'category', 'unit'],
+    properties: {
+      sku: { type: 'string', minLength: 1, maxLength: 40 },
+      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Cement OPC 53' },
+      category: { type: 'string', minLength: 1, maxLength: 40, example: 'Material' },
+      unit: { type: 'string', enum: UNITS, example: 'bag' },
+      reorderLevel: { type: 'number', minimum: 0, maximum: 100000000, example: 50 },
+      description: { type: 'string', maxLength: 500 },
+      isActive: { type: 'boolean' },
+    },
+  },
+  StockLocationCreate: {
+    type: 'object',
+    required: ['name', 'type'],
+    properties: {
+      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Main store' },
+      type: { type: 'string', enum: STOCK_LOCATION_TYPES, example: 'central_store' },
+      siteId: { ...objectId, description: 'Required when type is site_store. Must be empty for central_store.' },
+      isActive: { type: 'boolean' },
+    },
+  },
+  StockMovementCreate: {
+    type: 'object',
+    required: ['type', 'itemId', 'quantity'],
+    properties: {
+      type: { type: 'string', enum: MOVEMENT_TYPES, example: 'issue' },
+      itemId: objectId,
+      quantity,
+      direction: { type: 'string', enum: ADJUSTMENT_DIRECTIONS, description: 'Required when type is adjustment' },
+      fromLocationId: objectId,
+      toLocationId: objectId,
+      projectId: objectId,
+      siteId: objectId,
+      employeeId: objectId,
+      vehicleTypeId: objectId,
+      unitCost: money,
+      vendorName: { type: 'string', maxLength: 120, description: 'Required when type is receipt' },
+      condition: { type: 'string', enum: MATERIAL_CONDITIONS, description: 'Required when type is receipt' },
+      billNo: { type: 'string', maxLength: 80, description: 'Bill or challan is required for receipt' },
+      challanNo: { type: 'string', maxLength: 80 },
+      materialReceiptPhoto: { type: 'string', nullable: true, maxLength: 500 },
+      paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES, description: 'Required when type is receipt' },
+      address: { type: 'string', maxLength: 300 },
+      movementDate: dateValue,
+      reference: { type: 'string', maxLength: 80 },
+      remarks: { type: 'string', maxLength: 500 },
+    },
+  },
+  VehicleDocuments: {
+    type: 'object',
+    properties: {
+      insuranceExpiry: { ...dateValue, nullable: true },
+      fitnessExpiry: { ...dateValue, nullable: true },
+      permitExpiry: { ...dateValue, nullable: true },
+      pollutionExpiry: { ...dateValue, nullable: true },
+    },
+  },
+  VehicleCreate: {
+    type: 'object',
+    required: ['registrationNumber', 'type'],
+    properties: {
+      registrationNumber: { type: 'string', minLength: 1, maxLength: 20, example: 'UP32 AB 2002' },
+      type: { type: 'string', minLength: 1, maxLength: 40, example: 'Tipper' },
+      make: { type: 'string', maxLength: 80 },
+      modelName: { type: 'string', maxLength: 80 },
+      year: { type: 'integer', minimum: 1980, maximum: 2100, example: 2022 },
+      fuelType: { type: 'string', enum: FUEL_TYPES, example: 'diesel' },
+      odometer: { type: 'number', minimum: 0, example: 12000 },
+      documents: { $ref: '#/components/schemas/VehicleDocuments' },
+      notes: { type: 'string', maxLength: 1000 },
+      siteId: objectId,
+      driverId: objectId,
+      assignedAt: dateValue,
+      remarks: { type: 'string', maxLength: 300 },
+    },
+  },
+  VehicleAssign: {
+    type: 'object',
+    required: ['siteId'],
+    properties: {
+      siteId: objectId,
+      driverId: objectId,
+      assignedAt: dateValue,
+      remarks: { type: 'string', maxLength: 300 },
+    },
+  },
+  VehicleMaintenanceCreate: {
+    type: 'object',
+    required: ['type', 'description', 'cost'],
+    properties: {
+      loggedAt: dateValue,
+      type: { type: 'string', enum: MAINTENANCE_TYPES, example: 'service' },
+      description: { type: 'string', minLength: 3, maxLength: 500, example: 'Engine oil change' },
+      cost: { ...money, example: 2500 },
+      odometer: { type: 'number', minimum: 0, example: 12500 },
+      vendorName: { type: 'string', maxLength: 120 },
+      nextDueDate: dateValue,
+      recordExpense: { type: 'boolean' },
+      payeeName: { type: 'string', minLength: 1, maxLength: 120 },
+      paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
+    },
+  },
+  VehicleFuelCreate: {
+    type: 'object',
+    required: ['liters', 'amount'],
+    properties: {
+      loggedAt: dateValue,
+      liters: quantity,
+      amount: { ...positiveMoney, example: 3600 },
+      odometer: { type: 'number', minimum: 0, example: 12500 },
+      siteId: objectId,
+      remarks: { type: 'string', maxLength: 300 },
+      recordExpense: { type: 'boolean' },
+      payeeName: { type: 'string', minLength: 1, maxLength: 120 },
+      paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
+    },
+  },
+  SalaryCreate: {
+    type: 'object',
+    required: ['employeeId', 'periodMonth', 'periodYear'],
+    properties: {
+      employeeId: objectId,
+      projectId: objectId,
+      siteId: objectId,
+      periodMonth: { type: 'integer', minimum: 1, maximum: 12, example: 4 },
+      periodYear: { type: 'integer', minimum: 2000, maximum: 2100, example: 2026 },
+      payBasis: { type: 'string', enum: PAY_BASIS, example: 'monthly' },
+      baseAmount: { ...money, example: 25000 },
+      allowances: { type: 'array', maxItems: 20, items: amountLine },
+      deductions: { type: 'array', maxItems: 20, items: amountLine },
+      extras: { type: 'array', maxItems: 20, items: amountLine },
+      amountPaid: { ...money, example: 25000 },
+      recordStatus: { type: 'string', enum: SALARY_RECORD_STATUS },
+      remarks: { type: 'string', maxLength: 500 },
+    },
+  },
+  ExpenseCreate: {
+    type: 'object',
+    required: ['category', 'amount', 'description'],
+    properties: {
+      category: { type: 'string', enum: EXPENSE_CATEGORIES, example: 'material' },
+      amount: { ...positiveMoney, example: 38000 },
+      expenseDate: dateValue,
+      description: { type: 'string', minLength: 3, maxLength: 500, example: 'Cement purchase' },
+      payeeName: { type: 'string', minLength: 1, maxLength: 120 },
+      employeeId: objectId,
+      projectId: objectId,
+      siteId: objectId,
+      vehicleId: objectId,
+      itemId: objectId,
+      referenceNo: { type: 'string', maxLength: 80 },
+      paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES, example: 'bank_transfer' },
+    },
+  },
+  AdvanceCreate: {
+    type: 'object',
+    required: ['employeeId', 'advanceAmount', 'reasonForAdvance'],
+    properties: {
+      employeeId: objectId,
+      monthlySalary: money,
+      requestDate: dateValue,
+      advanceAmount: { ...positiveMoney, example: 5000 },
+      reasonForAdvance: { type: 'string', minLength: 1, maxLength: 500, example: 'Festival advance' },
+      attachment: { type: 'string', nullable: true, maxLength: 500 },
+      employeeRemarks: { type: 'string', maxLength: 500, example: 'Will adjust in next salary' },
+    },
+  },
+  ImpressCreate: {
+    type: 'object',
+    required: ['employeeId', 'siteId', 'description', 'given'],
+    properties: {
+      date: dateValue,
+      employeeId: objectId,
+      siteId: objectId,
+      description: { type: 'string', minLength: 1, maxLength: 500, example: 'Site petty cash' },
+      given: { ...positiveMoney, example: 10000 },
+      notes: { type: 'string', maxLength: 500, example: 'For local purchases' },
+    },
+  },
+  LocalExpenseCreate: {
+    type: 'object',
+    required: ['employeeId', 'cashGiven', 'expenseDetails', 'paymentMode'],
+    properties: {
+      date: dateValue,
+      employeeId: objectId,
+      siteId: objectId,
+      cashGiven: { ...positiveMoney, example: 2000 },
+      expenseDetails: { type: 'string', minLength: 1, maxLength: 1000, example: 'Tea, nails, and local transport' },
+      returnAmount: { ...money, example: 150 },
+      paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES, example: 'cash' },
+      receipt: { type: 'string', nullable: true, maxLength: 500 },
+    },
+  },
+};
+
 const spec = {
   openapi: '3.0.3',
   info: {
@@ -69,11 +534,13 @@ const spec = {
     { name: 'Inventory' },
     { name: 'Vehicles' },
     { name: 'Accounts' },
+    { name: 'Imports' },
   ],
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
     },
+    schemas,
   },
   paths: {
     '/health': {
@@ -83,27 +550,39 @@ const spec = {
       post: operation('Auth', 'Register an admin', {
         auth: false,
         status: '201',
-        body: jsonBody({ name: 'Owner', email: 'owner@mksbuilder.local', password: 'ChangeMe123!' }),
+        body: jsonBody({ name: 'Owner', email: 'owner@mksbuilder.local', password: 'ChangeMe123!' }, 'RegisterBody'),
       }),
     },
     '/auth/login': {
       post: operation('Auth', 'Log in', {
         auth: false,
-        body: jsonBody({ email: 'owner@mksbuilder.local', password: 'ChangeMe123!' }),
+        body: jsonBody({ email: 'owner@mksbuilder.local', password: 'ChangeMe123!' }, 'LoginBody'),
+      }),
+    },
+    '/auth/refresh': {
+      post: operation('Auth', 'Rotate the refresh token (OAuth 2.0). Sends a new access token and a new HttpOnly refresh_token cookie', {
+        auth: false,
+        body: jsonBody({ refreshToken: 'paste-refresh-token' }, 'RefreshBody'),
       }),
     },
     '/auth/forgot-password': {
       post: operation('Auth', 'Email a reset link', {
         auth: false,
-        body: jsonBody({ email: 'owner@mksbuilder.local' }),
+        body: jsonBody({ email: 'owner@mksbuilder.local' }, 'ForgotPasswordBody'),
       }),
     },
     '/auth/reset-password/{token}': {
       post: operation('Auth', 'Reset password with the email token', {
         auth: false,
         parameters: [{ name: 'token', in: 'path', required: true, schema: { type: 'string', minLength: 32 } }],
-        body: jsonBody({ password: 'NewPass123!', confirmPassword: 'NewPass123!' }),
+        body: jsonBody({ password: 'NewPass123!', confirmPassword: 'NewPass123!' }, 'ResetPasswordBody'),
       }),
+    },
+    '/auth/users': {
+      get: operation('Auth', 'List users'),
+    },
+    '/auth/users/{id}': {
+      delete: operation('Auth', 'Permanently delete a user', { parameters: [pathParam()] }),
     },
     '/auth/me': {
       get: operation('Auth', 'Current profile'),
@@ -133,7 +612,7 @@ const spec = {
           currentPassword: 'ChangeMe123!',
           newPassword: 'NewPass123!',
           confirmPassword: 'NewPass123!',
-        }),
+        }, 'ChangePasswordBody'),
       }),
     },
     '/dashboard': {
@@ -145,7 +624,7 @@ const spec = {
     '/departments/create': {
       post: operation('Departments', 'Create a department', {
         status: '201',
-        body: jsonBody({ name: 'Civil', description: 'Site civil works', isActive: true }),
+        body: jsonBody({ name: 'Civil', description: 'Site civil works', isActive: true }, 'DepartmentCreate'),
       }),
     },
     '/departments/get-by-id/{id}': {
@@ -158,14 +637,14 @@ const spec = {
       }),
     },
     '/departments/remove/{id}': {
-      delete: operation('Departments', 'Archive a department', { parameters: [pathParam()] }),
+      delete: operation('Departments', 'Permanently delete a department', { parameters: [pathParam()] }),
     },
     '/departments/{id}/restore': {
       post: operation('Departments', 'Restore a department', { parameters: [pathParam()] }),
     },
     '/projects': {
       get: operation('Projects', 'List projects', {
-        parameters: [...paging, query('status', { type: 'string', enum: ['planning', 'active', 'on_hold', 'completed', 'cancelled'] })],
+        parameters: [...paging, query('status', { type: 'string', enum: PROJECT_STATUS })],
       }),
     },
     '/projects/create': {
@@ -175,12 +654,18 @@ const spec = {
           name: 'Riverfront',
           clientName: 'City Authority',
           clientPhone: '9876543210',
+          description: '',
           startDate: '2026-04-01',
+          expectedEndDate: '2026-12-31',
           budgetAmount: 5000000,
           clientAmount: 1500000,
           moneySpent: 0,
           status: 'active',
-        }),
+          address: 'Ring Road',
+          city: 'Lucknow',
+          state: 'Uttar Pradesh',
+          pincode: '226001',
+        }, 'ProjectCreate'),
       }),
     },
     '/projects/{id}/summary': {
@@ -211,9 +696,15 @@ const spec = {
           projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
           name: 'Tower A',
           address: 'Ring Road',
+          city: 'Lucknow',
+          state: 'Uttar Pradesh',
+          pincode: '226001',
           startDate: '2026-04-01',
+          expectedEndDate: '2026-12-31',
           status: 'active',
-        }),
+          inchargeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          notes: '',
+        }, 'SiteCreate'),
       }),
     },
     '/sites/{id}': {
@@ -241,18 +732,23 @@ const spec = {
         status: '201',
         body: jsonBody({
           fullName: 'Ravi Kumar',
+          phone: '9876543210',
+          email: 'ravi@example.com',
+          address: 'Lucknow',
           departmentId: '64b0c0c0c0c0c0c0c0c0c0c0',
           designation: 'Mason',
           employmentType: 'permanent',
+          status: 'active',
           joiningDate: '2026-04-01',
-          salary: { payBasis: 'monthly', baseAmount: 25000 },
+          salary: { payBasis: 'monthly', baseAmount: 25000, allowances: [] },
+          notes: '',
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           idType: 'Aadhaar',
           idNumber: '123412341234',
           bankName: 'State Bank of India',
           accountNumber: '123456789012',
           ifscCode: 'SBIN0001234',
-        }),
+        }, 'EmployeeCreate'),
       }),
     },
     '/employees/{id}': {
@@ -272,7 +768,7 @@ const spec = {
       get: operation('Employees', 'List site assignments', { parameters: [pathParam()] }),
       post: operation('Employees', 'Assign an employee to a site', {
         parameters: [pathParam()],
-        body: jsonBody({ siteId: '64b0c0c0c0c0c0c0c0c0c0c0', startDate: '2026-04-14' }),
+        body: jsonBody({ siteId: '64b0c0c0c0c0c0c0c0c0c0c0', startDate: '2026-04-14', remarks: '' }, 'EmployeeAssign'),
       }),
     },
     '/employees/{id}/assignments/{assignmentId}/release': {
@@ -301,18 +797,23 @@ const spec = {
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
           date: '2026-04-14',
           status: 'present',
+          projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           checkIn: '09:00',
           checkOut: '18:00',
           overtimeHours: 1,
-        }),
+          remarks: '',
+        }, 'AttendanceCreate'),
       }),
     },
     '/attendance/bulk': {
       post: operation('Attendance', 'Mark attendance for up to 200 employees', {
         body: jsonBody({
           date: '2026-04-14',
+          projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           entries: [{ employeeId: '64b0c0c0c0c0c0c0c0c0c0c0', status: 'present', checkIn: '09:00', checkOut: '18:00' }],
-        }),
+        }, 'AttendanceBulkCreate'),
       }),
     },
     '/attendance/{id}': {
@@ -327,7 +828,15 @@ const spec = {
       get: operation('Inventory', 'List items', { parameters: paging }),
       post: operation('Inventory', 'Create an item', {
         status: '201',
-        body: jsonBody({ name: 'Cement OPC 53', category: 'Material', unit: 'bag', reorderLevel: 50 }),
+        body: jsonBody({
+          name: 'Cement OPC 53',
+          category: 'Material',
+          unit: 'bag',
+          sku: 'CEM-53',
+          reorderLevel: 50,
+          description: '',
+          isActive: true,
+        }, 'InventoryItemCreate'),
       }),
     },
     '/inventory/items/{id}': {
@@ -342,7 +851,7 @@ const spec = {
       get: operation('Inventory', 'List stock locations', { parameters: paging }),
       post: operation('Inventory', 'Create a stock location', {
         status: '201',
-        body: jsonBody({ name: 'Main store', type: 'central_store' }),
+        body: jsonBody({ name: 'Main store', type: 'central_store', isActive: true }, 'StockLocationCreate'),
       }),
     },
     '/inventory/locations/{id}': {
@@ -381,14 +890,19 @@ const spec = {
           type: 'issue',
           itemId: '64b0c0c0c0c0c0c0c0c0c0c0',
           quantity: 10,
+          fromLocationId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
           vehicleTypeId: '64b0c0c0c0c0c0c0c0c0c0c0',
-        }),
+          movementDate: '2026-04-14',
+          remarks: '',
+        }, 'StockMovementCreate'),
       }),
     },
     '/inventory/movements/{id}': {
       get: operation('Inventory', 'Get a stock movement', { parameters: [pathParam()] }),
+      delete: operation('Inventory', 'Permanently delete a stock movement and reverse its stock effect', { parameters: [pathParam()] }),
       patch: operation('Inventory', 'Update a stock movement and recalculate remaining stock', {
         parameters: [pathParam()],
         body: jsonBody({
@@ -416,6 +930,7 @@ const spec = {
     },
     '/inventory/issues/{id}': {
       get: operation('Inventory', 'Get a stock issue', { parameters: [pathParam()] }),
+      delete: operation('Inventory', 'Permanently delete a stock issue and return the quantity', { parameters: [pathParam()] }),
       patch: operation('Inventory', 'Update an issue and recalculate remaining stock', {
         parameters: [pathParam()],
         body: jsonBody({
@@ -432,10 +947,22 @@ const spec = {
         body: jsonBody({
           registrationNumber: 'UP32 AB 2002',
           type: 'Tipper',
+          make: 'Tata',
+          modelName: 'Signa',
+          year: 2022,
           fuelType: 'diesel',
           odometer: 12000,
+          documents: {
+            insuranceExpiry: '2027-04-01',
+            fitnessExpiry: '2027-04-01',
+            permitExpiry: '2027-04-01',
+            pollutionExpiry: '2027-04-01',
+          },
+          notes: '',
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
-        }),
+          driverId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          assignedAt: '2026-04-14',
+        }, 'VehicleCreate'),
       }),
     },
     '/vehicles/alerts': {
@@ -454,7 +981,7 @@ const spec = {
     '/vehicles/{id}/assign': {
       post: operation('Vehicles', 'Assign an available vehicle', {
         parameters: [pathParam()],
-        body: jsonBody({ siteId: '64b0c0c0c0c0c0c0c0c0c0c0', assignedAt: '2026-04-14' }),
+        body: jsonBody({ siteId: '64b0c0c0c0c0c0c0c0c0c0c0', assignedAt: '2026-04-14' }, 'VehicleAssign'),
       }),
     },
     '/vehicles/{id}/release': {
@@ -470,7 +997,20 @@ const spec = {
       get: operation('Vehicles', 'List maintenance logs', { parameters: [pathParam()] }),
       post: operation('Vehicles', 'Add a maintenance log', {
         parameters: [pathParam()],
-        body: jsonBody({ type: 'service', description: 'Engine oil change', cost: 2500, odometer: 12500 }),
+        body: jsonBody({
+          type: 'service',
+          description: 'Engine oil change',
+          cost: 2500,
+          odometer: 12500,
+          vendorName: 'Local garage',
+          nextDueDate: '2026-10-14',
+          recordExpense: false,
+        }, 'VehicleMaintenanceCreate'),
+      }),
+    },
+    '/vehicles/{id}/maintenance/{maintenanceId}': {
+      delete: operation('Vehicles', 'Permanently delete a maintenance log', {
+        parameters: [pathParam(), pathParam('maintenanceId')],
       }),
     },
     '/vehicles/{id}/maintenance/{maintenanceId}/complete': {
@@ -483,7 +1023,19 @@ const spec = {
       get: operation('Vehicles', 'List fuel logs', { parameters: [pathParam()] }),
       post: operation('Vehicles', 'Add a fuel log', {
         parameters: [pathParam()],
-        body: jsonBody({ liters: 40, amount: 3600, odometer: 12500 }),
+        body: jsonBody({
+          liters: 40,
+          amount: 3600,
+          odometer: 12500,
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          remarks: '',
+          recordExpense: false,
+        }, 'VehicleFuelCreate'),
+      }),
+    },
+    '/vehicles/{id}/fuel-logs/{fuelLogId}': {
+      delete: operation('Vehicles', 'Permanently delete a fuel log', {
+        parameters: [pathParam(), pathParam('fuelLogId')],
       }),
     },
     '/accounts/summary': {
@@ -500,17 +1052,24 @@ const spec = {
         status: '201',
         body: jsonBody({
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           periodMonth: 4,
           periodYear: 2026,
           payBasis: 'monthly',
           baseAmount: 25000,
+          allowances: [],
+          deductions: [],
+          extras: [],
           amountPaid: 25000,
-        }),
+          remarks: '',
+        }, 'SalaryCreate'),
       }),
     },
     '/accounts/salaries/{id}': {
       get: operation('Accounts', 'Get a salary record', { parameters: [pathParam()] }),
       patch: operation('Accounts', 'Update a salary record', { parameters: [pathParam()], body: jsonBody({ amountPaid: 20000 }) }),
+      delete: operation('Accounts', 'Permanently delete a salary record', { parameters: [pathParam()] }),
     },
     '/accounts/salaries/{id}/void': {
       post: operation('Accounts', 'Void a salary record', {
@@ -525,14 +1084,23 @@ const spec = {
         body: jsonBody({
           category: 'material',
           amount: 38000,
+          expenseDate: '2026-04-14',
           description: 'Cement purchase',
+          payeeName: 'Ultratech',
+          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          vehicleId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          itemId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          referenceNo: 'BILL-1024',
           paymentModeNote: 'bank_transfer',
-        }),
+        }, 'ExpenseCreate'),
       }),
     },
     '/accounts/expenses/{id}': {
       get: operation('Accounts', 'Get an expense', { parameters: [pathParam()] }),
       patch: operation('Accounts', 'Update an expense', { parameters: [pathParam()], body: jsonBody({ amount: 40000 }) }),
+      delete: operation('Accounts', 'Permanently delete an expense', { parameters: [pathParam()] }),
     },
     '/accounts/expenses/{id}/void': {
       post: operation('Accounts', 'Void an expense', {
@@ -548,11 +1116,12 @@ const spec = {
         status: '201',
         body: jsonBody({
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          monthlySalary: 25000,
           advanceAmount: 5000,
           reasonForAdvance: 'Festival advance',
           employeeRemarks: 'Will adjust in next salary',
           requestDate: '2026-10-30',
-        }),
+        }, 'AdvanceCreate'),
       }),
     },
     '/accounts/advances/{id}': {
@@ -561,6 +1130,7 @@ const spec = {
         parameters: [pathParam()],
         body: jsonBody({ advanceAmount: 7000, reasonForAdvance: 'Medical expense' }),
       }),
+      delete: operation('Accounts', 'Permanently delete an advance request', { parameters: [pathParam()] }),
     },
     '/accounts/advances/{id}/recover': {
       post: operation('Accounts', 'Record an advance recovery', {
@@ -587,7 +1157,7 @@ const spec = {
           description: 'Site petty cash',
           given: 10000,
           notes: 'For local purchases',
-        }),
+        }, 'ImpressCreate'),
       }),
     },
     '/accounts/impress/{id}': {
@@ -596,7 +1166,7 @@ const spec = {
         parameters: [pathParam()],
         body: jsonBody({ given: 12000, notes: 'Top-up' }),
       }),
-      delete: operation('Accounts', 'Delete an impress entry', { parameters: [pathParam()] }),
+      delete: operation('Accounts', 'Permanently delete an impress entry', { parameters: [pathParam()] }),
     },
     '/accounts/impress/{id}/void': {
       post: operation('Accounts', 'Void an impress entry', {
@@ -613,11 +1183,12 @@ const spec = {
         body: jsonBody({
           date: '2026-10-30',
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           cashGiven: 2000,
           expenseDetails: 'Tea, nails, and local transport',
           returnAmount: 150,
           paymentMode: 'cash',
-        }),
+        }, 'LocalExpenseCreate'),
       }),
     },
     '/accounts/local-expenses/employees/{employeeId}/site': {
@@ -631,7 +1202,42 @@ const spec = {
         parameters: [pathParam()],
         body: jsonBody({ returnAmount: 100, expenseDetails: 'Corrected details' }),
       }),
-      delete: operation('Accounts', 'Delete a local expense', { parameters: [pathParam()] }),
+      delete: operation('Accounts', 'Permanently delete a local expense', { parameters: [pathParam()] }),
+    },
+    '/imports/template': {
+      get: operation('Imports', 'Download the global Excel template with one sheet per module'),
+    },
+    '/imports/preview': {
+      post: operation('Imports', 'Preview a workbook. Detects sheets and validates rows without saving', {
+        body: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: { file: { type: 'string', format: 'binary', description: 'xlsx workbook' } },
+              },
+            },
+          },
+        },
+      }),
+    },
+    '/imports': {
+      post: operation('Imports', 'Import a workbook into departments, projects, sites, employees, inventory, vehicles, attendance, and accounts', {
+        body: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: { file: { type: 'string', format: 'binary', description: 'xlsx workbook' } },
+              },
+            },
+          },
+        },
+      }),
     },
   },
 };

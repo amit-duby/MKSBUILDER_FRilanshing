@@ -8,7 +8,7 @@ const items = buildController(inventory.items, {
   listed: 'Items fetched',
   fetched: 'Item fetched',
   updated: 'Item updated',
-  removed: 'Item archived',
+  removed: 'Item deleted',
   restored: 'Item restored',
 });
 
@@ -70,6 +70,16 @@ const updateIssue = asyncHandler(async (req, res) => {
   return ok(res, data, 'Stock issue updated');
 });
 
+const deleteMovement = asyncHandler(async (req, res) => {
+  await inventory.movements.remove(req.params.id);
+  return ok(res, null, 'Stock movement deleted');
+});
+
+const deleteIssue = asyncHandler(async (req, res) => {
+  await inventory.movements.removeIssue(req.params.id);
+  return ok(res, null, 'Stock issue deleted');
+});
+
 module.exports = {
   items,
   locations,
@@ -82,4 +92,6 @@ module.exports = {
   getIssue,
   updateMovement,
   updateIssue,
+  deleteMovement,
+  deleteIssue,
 };

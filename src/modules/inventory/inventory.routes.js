@@ -24,6 +24,7 @@ router.get('/stock', validate(schema.listStock), controller.listStock);
 router.get('/movements', validate(schema.listMovements), controller.listMovements);
 router.post('/movements', validate(schema.createMovement), controller.createMovement);
 router.patch('/movements/:id', validate(schema.updateMovement), controller.updateMovement);
+router.delete('/movements/:id', validate(schema.byId), controller.deleteMovement);
 router.get('/movements/:id', validate(schema.byId), controller.getMovement);
 
 router.get('/issues', validate(schema.listIssues), controller.listIssues);

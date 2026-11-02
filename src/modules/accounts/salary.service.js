@@ -141,4 +141,10 @@ async function voidRecord(id, body) {
   return present(doc.id);
 }
 
-module.exports = { create, list, getById, update, voidRecord };
+async function remove(id) {
+  const doc = await SalaryRecord.findById(id);
+  if (!doc) throw new AppError('Salary record not found', 404, 'NOT_FOUND');
+  await doc.deleteOne();
+}
+
+module.exports = { create, list, getById, update, voidRecord, remove };

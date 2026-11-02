@@ -52,7 +52,10 @@ app.use((req, res, next) => {
   if (req.path === '/api/docs' || req.path.startsWith('/api/docs/')) return docsHelmet(req, res, next);
   return apiHelmet(req, res, next);
 });
-app.use(cors({ origin: config.corsOrigins }));
+app.use(cors({
+  origin: config.corsOrigins,
+  credentials: config.corsOrigins !== '*',
+}));
 app.use(compression());
 app.use(express.json({ limit: '1mb' }));
 app.use(sanitize);

@@ -6,6 +6,6 @@ module.exports = buildController(service, {
   listed: 'Sites fetched',
   fetched: 'Site fetched',
   updated: 'Site updated',
-  removed: 'Site archived',
+  removed: 'Site deleted',
   restored: 'Site restored',
 });

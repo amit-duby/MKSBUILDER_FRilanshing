@@ -15,12 +15,14 @@ router.get('/salaries', validate(schema.listSalaries), controller.listSalaries);
 router.post('/salaries', validate(schema.createSalary), controller.createSalary);
 router.get('/salaries/:id', validate(schema.byId), controller.getSalary);
 router.patch('/salaries/:id', validate(schema.updateSalary), controller.updateSalary);
+router.delete('/salaries/:id', validate(schema.byId), controller.deleteSalary);
 router.post('/salaries/:id/void', validate(schema.voidSalary), controller.voidSalary);
 
 router.get('/expenses', validate(schema.listExpenses), controller.listExpenses);
 router.post('/expenses', validate(schema.createExpense), controller.createExpense);
 router.get('/expenses/:id', validate(schema.byId), controller.getExpense);
 router.patch('/expenses/:id', validate(schema.updateExpense), controller.updateExpense);
+router.delete('/expenses/:id', validate(schema.byId), controller.deleteExpense);
 router.post('/expenses/:id/void', validate(schema.voidExpense), controller.voidExpense);
 
 router.get('/advances', validate(schema.listAdvances), controller.listAdvances);
@@ -28,6 +30,7 @@ router.post('/advances', advanceUpload, validate(schema.createAdvance), controll
 router.get('/advances/:id', validate(schema.byId), controller.getAdvance);
 router.patch('/advances/:id', advanceUpload, validate(schema.updateAdvance), controller.updateAdvance);
 router.post('/advances/:id/recover', validate(schema.recoverAdvance), controller.recoverAdvance);
+router.delete('/advances/:id', validate(schema.byId), controller.deleteAdvance);
 router.post('/advances/:id/void', validate(schema.voidAdvance), controller.voidAdvance);
 
 router.get('/impress', validate(schema.listImpress), controller.listImpress);

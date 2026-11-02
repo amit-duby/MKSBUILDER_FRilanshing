@@ -19,6 +19,10 @@ async function authenticate(req, _res, next) {
     throw new AppError('Invalid or expired token', 401, 'UNAUTHORIZED');
   }
 
+  if (payload.typ && payload.typ !== 'access') {
+    throw new AppError('Invalid or expired token', 401, 'UNAUTHORIZED');
+  }
+
   const user = await User.findById(payload.sub).select('+tokenVersion');
   if (!user || !user.isActive || user.tokenVersion !== payload.tv) {
     throw new AppError('Authentication required', 401, 'UNAUTHORIZED');

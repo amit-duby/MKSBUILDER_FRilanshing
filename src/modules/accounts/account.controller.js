@@ -32,6 +32,11 @@ const voidSalary = asyncHandler(async (req, res) => {
   return ok(res, data, 'Salary record voided');
 });
 
+const deleteSalary = asyncHandler(async (req, res) => {
+  await salaryService.remove(req.params.id);
+  return ok(res, null, 'Salary record deleted');
+});
+
 const listExpenses = asyncHandler(async (req, res) => {
   const result = await expenseService.list(req.query);
   return ok(res, result.items, 'Expenses fetched', result.meta);
@@ -55,6 +60,11 @@ const updateExpense = asyncHandler(async (req, res) => {
 const voidExpense = asyncHandler(async (req, res) => {
   const data = await expenseService.voidRecord(req.params.id, req.body);
   return ok(res, data, 'Expense voided');
+});
+
+const deleteExpense = asyncHandler(async (req, res) => {
+  await expenseService.remove(req.params.id);
+  return ok(res, null, 'Expense deleted');
 });
 
 const summary = asyncHandler(async (req, res) => {
@@ -98,6 +108,11 @@ const recoverAdvance = asyncHandler(async (req, res) => {
 const voidAdvance = asyncHandler(async (req, res) => {
   const data = await advanceService.voidRecord(req.params.id, req.body);
   return ok(res, data, 'Advance request voided');
+});
+
+const deleteAdvance = asyncHandler(async (req, res) => {
+  await advanceService.remove(req.params.id);
+  return ok(res, null, 'Advance request deleted');
 });
 
 const listImpress = asyncHandler(async (req, res) => {
@@ -172,11 +187,13 @@ module.exports = {
   getSalary,
   updateSalary,
   voidSalary,
+  deleteSalary,
   listExpenses,
   createExpense,
   getExpense,
   updateExpense,
   voidExpense,
+  deleteExpense,
   summary,
   statement,
   listAdvances,
@@ -185,6 +202,7 @@ module.exports = {
   updateAdvance,
   recoverAdvance,
   voidAdvance,
+  deleteAdvance,
   listImpress,
   createImpress,
   getImpress,

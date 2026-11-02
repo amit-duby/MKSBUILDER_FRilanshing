@@ -50,6 +50,16 @@ npm start
 
 Health check: `GET /api/v1/health`
 
+## Excel import
+
+Manual forms stay as they are. For bulk load, use one workbook:
+
+1. `GET /api/v1/imports/template` downloads `mks-erp-import-template.xlsx` (one sheet per module).
+2. `POST /api/v1/imports/preview` with `file` (form-data) checks rows and does not save.
+3. `POST /api/v1/imports` with the same file creates records.
+
+Sheets: `departments`, `projects`, `sites`, `employees`, `inventory`, `vehicles`, `attendance`, `accounts`. Use codes such as `DEP-0001` and `STE-0001`. A single sheet can also have a `module` column. Import order is departments first, accounts last.
+
 Create the first admin, then log in:
 
 ```bash
@@ -71,7 +81,7 @@ Send the token as `Authorization: Bearer <token>`. Sample calls are in `examples
 }
 ```
 
-List endpoints accept `page`, `limit` (max 100), `search`, and `sort` (`name` or `-createdAt`). Unknown sort fields are rejected. Master records are archived, not hard-deleted. Pass `includeArchived=true` to list them, and `POST /:id/restore` to bring one back.
+List endpoints accept `page`, `limit` (max 100), `search`, and `sort` (`name` or `-createdAt`). Unknown sort fields are rejected. Delete APIs permanently remove the record from the database. `includeArchived=true` and `POST /:id/restore` still apply to records that were archived before this change.
 
 ## Salary and expenses
 
@@ -137,6 +147,6 @@ Business numbers that must stay stable (salary totals, stock plans) live in plai
 - Put the API behind HTTPS.
 - Set `NODE_ENV=production`, a long `JWT_SECRET`, a real admin password, and an explicit `CORS_ORIGIN`.
 - Set `TRUST_PROXY=true` when a reverse proxy terminates TLS.
-- Tokens last `JWT_EXPIRES_IN` (default 8 hours). Logout bumps the token version and signs every current token out.
+- Access tokens last `JWT_EXPIRES_IN` (default 8 hours). Refresh tokens last `JWT_REFRESH_EXPIRES_IN` (default 7 days). Call `POST /auth/refresh` with `refreshToken` to get a new pair. Logout revokes refresh tokens and bumps the access-token version.
 - Login is limited to 20 attempts per 15 minutes. The rest of the API allows 1000 requests per 15 minutes.
 - The image in `Dockerfile` expects `MONGODB_URI` and the other variables at runtime. `docker compose up -d` starts only MongoDB.

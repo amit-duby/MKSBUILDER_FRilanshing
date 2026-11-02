@@ -59,6 +59,7 @@ const COLLECTIONS = {
   localExpenses: 'local_expenses',
   attendance: 'attendance_records',
   counters: 'counters',
+  refreshTokens: 'refresh_tokens',
 };
 
 const DOCUMENT_EXPIRY_FIELDS = [

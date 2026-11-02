@@ -1,6 +1,8 @@
 const {
   z,
   requestSchema,
+  idParams,
+  listQuery,
   shortText,
 } = require('../../common/validators/zod');
 
@@ -18,6 +20,12 @@ const register = requestSchema({
 
 const login = requestSchema({
   body: z.object(credentials),
+});
+
+const refresh = requestSchema({
+  body: z.object({
+    refreshToken: z.string().trim().min(32).max(256).optional(),
+  }).optional().default({}),
 });
 
 const forgotPassword = requestSchema({
@@ -66,4 +74,12 @@ const profile = requestSchema({
   }),
 });
 
-module.exports = { register, login, forgotPassword, resetPassword, changePassword, profile };
+const listUsers = requestSchema({
+  query: listQuery(),
+});
+
+const byId = requestSchema({
+  params: idParams,
+});
+
+module.exports = { register, login, refresh, forgotPassword, resetPassword, changePassword, profile, listUsers, byId };

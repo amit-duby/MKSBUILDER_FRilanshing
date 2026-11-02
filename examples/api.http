@@ -1,5 +1,6 @@
 @baseUrl = http://localhost:4000/api/v1
 @token = paste-token-here
+@refreshToken = paste-refresh-token-here
 
 ### Register the first admin
 POST {{baseUrl}}/auth/register
@@ -18,6 +19,14 @@ Content-Type: application/json
 {
   "email": "owner@mksbuilder.local",
   "password": "ChangeMe123!"
+}
+
+### Refresh access token
+POST {{baseUrl}}/auth/refresh
+Content-Type: application/json
+
+{
+  "refreshToken": "{{refreshToken}}"
 }
 
 ### Forgot password
@@ -204,3 +213,32 @@ Content-Type: application/json
   "reference": "GRN-14",
   "remarks": "Received from Sharma Traders"
 }
+
+### Download global Excel template
+GET {{baseUrl}}/imports/template
+Authorization: Bearer {{token}}
+
+### Preview workbook (no save)
+POST {{baseUrl}}/imports/preview
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----erp
+
+------erp
+Content-Disposition: form-data; name="file"; filename="mks-erp-import-template.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< ./mks-erp-import-template.xlsx
+------erp--
+
+### Import workbook into all modules
+POST {{baseUrl}}/imports
+Authorization: Bearer {{token}}
+Content-Type: multipart/form-data; boundary=----erp
+
+------erp
+Content-Disposition: form-data; name="file"; filename="mks-erp-import-template.xlsx"
+Content-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet
+
+< ./mks-erp-import-template.xlsx
+------erp--
+

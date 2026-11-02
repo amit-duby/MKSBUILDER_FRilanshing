@@ -23,6 +23,7 @@ const localExpenseSchema = new mongoose.Schema(
 
 localExpenseSchema.index({ employee: 1, date: -1 });
 localExpenseSchema.index({ site: 1, date: -1 });
+localExpenseSchema.index({ employee: 1, site: 1, isVoid: 1, date: 1 });
 
 applyJson(localExpenseSchema);
 

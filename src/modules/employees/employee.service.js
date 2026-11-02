@@ -269,11 +269,9 @@ async function update(id, body) {
 
 async function remove(id) {
   const doc = await Employee.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
-  await closeCurrentAssignments(doc._id, new Date());
-  doc.isDeleted = true;
-  if (doc.status === 'active') doc.status = 'inactive';
-  await doc.save();
+  if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  await Assignment.deleteMany({ employee: doc._id });
+  await doc.deleteOne();
 }
 
 async function restore(id) {

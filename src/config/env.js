@@ -47,6 +47,7 @@ const schema = z.object({
   MONGODB_URI: mongoUri,
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().min(1).default('8h'),
+  JWT_REFRESH_EXPIRES_IN: z.string().min(1).default('7d'),
   CORS_ORIGIN: z.string().min(1).default('*'),
   LOG_LEVEL: z.string().min(1).default('info'),
   TRUST_PROXY: z.enum(['true', 'false']).default('false'),
@@ -71,9 +72,9 @@ function getConfig() {
     trustProxy: parsed.data.TRUST_PROXY === 'true',
     resend: parsed.data.RESEND_API_KEY
       ? {
-          apiKey: parsed.data.RESEND_API_KEY,
-          from: parsed.data.MAIL_FROM || 'MKS Construction ERP <onboarding@resend.dev>',
-        }
+        apiKey: parsed.data.RESEND_API_KEY,
+        from: parsed.data.MAIL_FROM || 'MKS Construction ERP <onboarding@resend.dev>',
+      }
       : null,
     corsOrigins: parsed.data.CORS_ORIGIN === '*'
       ? '*'

@@ -21,6 +21,8 @@ const impressSchema = new mongoose.Schema(
 
 impressSchema.index({ employee: 1, date: -1 });
 impressSchema.index({ site: 1, date: -1 });
+impressSchema.index({ isVoid: 1, date: -1 });
+impressSchema.index({ employee: 1, site: 1, isVoid: 1, date: 1 });
 
 applyJson(impressSchema);
 

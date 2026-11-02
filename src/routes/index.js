@@ -11,6 +11,7 @@ const attendanceRoutes = require('../modules/attendance/attendance.routes');
 const inventoryRoutes = require('../modules/inventory/inventory.routes');
 const vehicleRoutes = require('../modules/vehicles/vehicle.routes');
 const accountRoutes = require('../modules/accounts/account.routes');
+const importRoutes = require('../modules/imports/import.routes');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
 
 const router = express.Router();
@@ -41,5 +42,6 @@ router.use('/attendance', attendanceRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/vehicles', vehicleRoutes);
 router.use('/accounts', accountRoutes);
+router.use('/imports', importRoutes);
 
 module.exports = router;
