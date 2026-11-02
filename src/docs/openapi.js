@@ -44,6 +44,7 @@ const quantity = {
   type: 'number',
   exclusiveMinimum: 0,
   maximum: 100000000,
+  example: 10,
   description: 'Positive quantity, at most 3 decimal places',
 };
 
@@ -88,15 +89,100 @@ function query(name, schema, description) {
   return { name, in: 'query', required: false, schema, description };
 }
 
+function derefSchema(node, stack = []) {
+  if (!node || typeof node !== 'object') return node;
+  if (node.$ref) {
+    const name = String(node.$ref).split('/').pop();
+    if (!name || stack.includes(name) || !schemas[name]) return { type: 'object' };
+    return derefSchema(schemas[name], stack.concat(name));
+  }
+  const copy = { ...node };
+  if (copy.properties) {
+    copy.properties = Object.fromEntries(
+      Object.entries(copy.properties).map(([key, value]) => [key, derefSchema(value, stack)])
+    );
+  }
+  if (copy.items) copy.items = derefSchema(copy.items, stack);
+  if (copy.oneOf) copy.oneOf = copy.oneOf.map((item) => derefSchema(item, stack));
+  return copy;
+}
+
+function exampleFromSchema(node, fieldName = '') {
+  if (!node || typeof node !== 'object') return '';
+  if (node.$ref) return exampleFromSchema(derefSchema(node), fieldName);
+  if (Object.prototype.hasOwnProperty.call(node, 'example')) return node.example;
+  if (node.enum && node.enum.length) return node.enum[0];
+  if (node.oneOf && node.oneOf.length) return exampleFromSchema(node.oneOf[0], fieldName);
+  if (node.type === 'array') return [exampleFromSchema(node.items, fieldName)];
+  if (node.properties) {
+    return Object.fromEntries(
+      Object.entries(node.properties).map(([key, value]) => [key, exampleFromSchema(value, key)])
+    );
+  }
+  if (node.type === 'boolean') return true;
+  if (node.type === 'integer') return node.minimum == null ? 1 : node.minimum;
+  if (node.type === 'number') return node.minimum == null ? 0 : node.minimum;
+  if (node.format === 'date') return '2026-04-01';
+  if (node.format === 'email') return 'owner@mksbuilder.local';
+  if (node.nullable) return null;
+  const samples = {
+    description: 'Site civil works',
+    address: 'Ring Road',
+    city: 'Lucknow',
+    state: 'Uttar Pradesh',
+    pincode: '226001',
+    notes: '',
+    remarks: '',
+    sku: 'CEM-53',
+    make: 'Tata',
+    modelName: 'Signa',
+    vendorName: 'Ultratech Cement',
+    payeeName: 'Ultratech',
+    billNo: 'INV-1024',
+    challanNo: 'CH-12',
+    reference: 'REF-1',
+    referenceNo: 'BILL-1024',
+    name: fieldName === 'name' ? 'Sample' : '',
+  };
+  if (Object.prototype.hasOwnProperty.call(samples, fieldName)) return samples[fieldName];
+  return '';
+}
+
+function mergeExample(base, override) {
+  if (override === undefined) return base;
+  if (
+    !base
+    || typeof base !== 'object'
+    || Array.isArray(base)
+    || typeof override !== 'object'
+    || Array.isArray(override)
+  ) {
+    return override;
+  }
+  const merged = { ...base };
+  for (const [key, value] of Object.entries(override)) {
+    merged[key] = mergeExample(base[key], value);
+  }
+  return merged;
+}
+
 function jsonBody(example, schema) {
+  const resolved = typeof schema === 'string'
+    ? derefSchema(schemas[schema])
+    : schema
+      ? derefSchema(schema)
+      : { type: 'object' };
+  const generated = resolved && resolved.properties ? exampleFromSchema(resolved) : {};
+  const fullExample = mergeExample(generated, example);
   return {
     required: true,
     content: {
       'application/json': {
-        schema: typeof schema === 'string'
-          ? { $ref: `#/components/schemas/${schema}` }
-          : schema || { type: 'object' },
-        example,
+        schema: {
+          ...resolved,
+          example: fullExample,
+        },
+        example: fullExample,
       },
     },
   };
@@ -129,8 +215,8 @@ const amountLine = {
   type: 'object',
   required: ['name', 'amount'],
   properties: {
-    name: { type: 'string', minLength: 1, maxLength: 80 },
-    amount: money,
+    name: { type: 'string', minLength: 1, maxLength: 80, example: 'HRA' },
+    amount: { ...money, example: 2000 },
   },
 };
 
@@ -513,6 +599,12 @@ const schemas = {
     },
   },
 };
+
+for (const schema of Object.values(schemas)) {
+  if (schema && schema.properties && schema.example === undefined) {
+    schema.example = exampleFromSchema(schema);
+  }
+}
 
 const spec = {
   openapi: '3.0.3',
