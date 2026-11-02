@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const AppError = require('../errors/AppError');
-const { compressBuffer } = require('../utils/compressImage');
+const { prepareImage } = require('../utils/compressImage');
 
 const AVATAR_DIR = path.join(process.cwd(), 'uploads', 'avatars');
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -34,9 +34,9 @@ function avatarUpload(req, res, next) {
     }
     if (!req.file || !req.file.buffer) return next();
     try {
-      const buffer = await compressBuffer(req.file.buffer, 'avatar');
-      const filename = `${req.user.id}-${Date.now()}.jpg`;
-      await fs.promises.writeFile(path.join(AVATAR_DIR, filename), buffer);
+      const prepared = await prepareImage(req.file.buffer, 'avatar');
+      const filename = `${req.user.id}-${Date.now()}${prepared.ext}`;
+      await fs.promises.writeFile(path.join(AVATAR_DIR, filename), prepared.buffer);
       req.file.filename = filename;
       return next();
     } catch (compressError) {
