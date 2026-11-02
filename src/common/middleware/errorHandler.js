@@ -7,6 +7,14 @@ function normalize(error) {
     return new AppError('Invalid JSON body', 400, 'BAD_REQUEST');
   }
 
+  if (error.type === 'entity.too.large' || error.name === 'PayloadTooLargeError' || error.status === 413) {
+    return new AppError(
+      'Photo is too large. Use a JPEG, PNG, or WebP up to 10 MB. It will be compressed automatically.',
+      413,
+      'PAYLOAD_TOO_LARGE'
+    );
+  }
+
   if (error.code === 11000) {
     return new AppError(duplicateMessage(error), 409, 'CONFLICT');
   }

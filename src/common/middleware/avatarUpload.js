@@ -2,21 +2,12 @@ const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
 const AppError = require('../errors/AppError');
+const { compressBuffer } = require('../utils/compressImage');
 
 const AVATAR_DIR = path.join(process.cwd(), 'uploads', 'avatars');
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
-const ALLOWED_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
 fs.mkdirSync(AVATAR_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: AVATAR_DIR,
-  filename(req, file, callback) {
-    const ext = path.extname(file.originalname || '').toLowerCase();
-    const safeExt = ALLOWED_EXT.has(ext) ? ext : '.jpg';
-    callback(null, `${req.user.id}-${Date.now()}${safeExt}`);
-  },
-});
 
 function fileFilter(_req, file, callback) {
   if (!ALLOWED_TYPES.has(file.mimetype)) {
@@ -27,19 +18,30 @@ function fileFilter(_req, file, callback) {
 }
 
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter,
-  limits: { fileSize: 2 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 });
 
 function avatarUpload(req, res, next) {
-  upload.single('avatar')(req, res, (error) => {
-    if (!error) return next();
-    if (error instanceof AppError) return next(error);
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return next(new AppError('Avatar must be 2 MB or smaller', 400, 'BAD_REQUEST'));
+  upload.single('avatar')(req, res, async (error) => {
+    if (error) {
+      if (error instanceof AppError) return next(error);
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return next(new AppError('Avatar must be 10 MB or smaller. It will be compressed automatically.', 400, 'BAD_REQUEST'));
+      }
+      return next(new AppError('Avatar upload failed', 400, 'BAD_REQUEST'));
     }
-    return next(new AppError('Avatar upload failed', 400, 'BAD_REQUEST'));
+    if (!req.file || !req.file.buffer) return next();
+    try {
+      const buffer = await compressBuffer(req.file.buffer, 'avatar');
+      const filename = `${req.user.id}-${Date.now()}.jpg`;
+      await fs.promises.writeFile(path.join(AVATAR_DIR, filename), buffer);
+      req.file.filename = filename;
+      return next();
+    } catch (compressError) {
+      return next(compressError);
+    }
   });
 }
 

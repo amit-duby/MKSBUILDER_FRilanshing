@@ -57,7 +57,7 @@ app.use(cors({
   credentials: config.corsOrigins !== '*',
 }));
 app.use(compression());
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json());
 app.use(sanitize);
 app.use(hpp());
 app.use(requestContext);
