@@ -93,13 +93,20 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
 }));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapi, {
   customSiteTitle: 'MKS Construction ERP API',
+  customCss: `
+    .swagger-ui .model-example ul.tab,
+    .swagger-ui section.models,
+    .swagger-ui .model-box,
+    .swagger-ui .model-box-control { display: none !important; }
+  `,
   swaggerOptions: {
     persistAuthorization: true,
-    defaultModelExpandDepth: 10,
-    defaultModelsExpandDepth: 10,
-    defaultModelRendering: 'model',
+    defaultModelRendering: 'example',
+    defaultModelExpandDepth: -1,
+    defaultModelsExpandDepth: -1,
     docExpansion: 'list',
     displayRequestDuration: true,
+    syntaxHighlight: { activate: true, theme: 'agate' },
   },
 }));
 app.get('/api/docs.json', (_req, res) => {
