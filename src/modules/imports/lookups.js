@@ -16,7 +16,6 @@ async function findDepartment(value) {
   const text = codeOrName(value);
   if (!text) return null;
   return Department.findOne({
-    isDeleted: false,
     $or: [{ code: text.toUpperCase() }, { name: nameFilter(text) }],
   });
 }
@@ -25,7 +24,6 @@ async function findProject(value) {
   const text = codeOrName(value);
   if (!text) return null;
   return Project.findOne({
-    isDeleted: false,
     $or: [{ code: text.toUpperCase() }, { name: nameFilter(text) }],
   });
 }
@@ -34,7 +32,6 @@ async function findSite(value) {
   const text = codeOrName(value);
   if (!text) return null;
   return Site.findOne({
-    isDeleted: false,
     $or: [{ code: text.toUpperCase() }, { name: nameFilter(text) }],
   });
 }
@@ -43,7 +40,6 @@ async function findEmployee(value) {
   const text = codeOrName(value);
   if (!text) return null;
   return Employee.findOne({
-    isDeleted: false,
     $or: [{ code: text.toUpperCase() }, { fullName: nameFilter(text) }],
   });
 }

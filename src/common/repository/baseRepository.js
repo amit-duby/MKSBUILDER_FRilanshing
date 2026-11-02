@@ -11,10 +11,11 @@ class BaseRepository {
     return this.model.findById(id);
   }
 
-  async paginate({ filter, page, limit, sort, populate }) {
+  async paginate({ filter, page, limit, sort, populate, lean }) {
     const skip = (page - 1) * limit;
     let query = this.model.find(filter).sort(sort).skip(skip).limit(limit);
     if (populate) query = query.populate(populate);
+    if (lean) query = query.lean();
 
     const [items, total] = await Promise.all([
       query,

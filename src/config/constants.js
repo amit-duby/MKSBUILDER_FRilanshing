@@ -8,13 +8,12 @@ const PAY_BASIS = ['monthly', 'daily'];
 const ATTENDANCE_STATUS = ['present', 'absent', 'half_day', 'leave', 'weekly_off', 'holiday'];
 const SALARY_RECORD_STATUS = ['draft', 'recorded'];
 
-const STOCK_LOCATION_TYPES = ['central_store', 'site_store'];
+const UNITS = ['nos', 'bag', 'kg', 'ton', 'cum', 'sqm', 'rmt', 'liter', 'box', 'bundle', 'set'];
 const MOVEMENT_TYPES = ['receipt', 'issue', 'transfer', 'adjustment', 'return'];
+const MOVEMENT_STATUS = ['active', 'inactive'];
 const MATERIAL_CONDITIONS = ['new', 'old', 'scrap'];
 const ADJUSTMENT_DIRECTIONS = ['increase', 'decrease'];
-const UNITS = ['nos', 'bag', 'kg', 'ton', 'cum', 'sqm', 'rmt', 'liter', 'box', 'bundle', 'set'];
-
-const VEHICLE_STATUS = ['available', 'assigned', 'maintenance', 'inactive',];
+const VEHICLE_STATUS = ['available', 'maintenance', 'inactive'];
 const FUEL_TYPES = ['diesel', 'petrol', 'cng', 'electric', 'other'];
 const MAINTENANCE_TYPES = ['service', 'repair', 'tyre', 'insurance', 'other'];
 
@@ -45,13 +44,10 @@ const COLLECTIONS = {
   employees: 'employees',
   employeeAssignments: 'employee_assignments',
   inventoryItems: 'inventory_items',
-  stockLocations: 'stock_locations',
-  stockBalances: 'stock_balances',
   stockMovements: 'stock_movements',
   vehicles: 'vehicles',
-  vehicleAssignments: 'vehicle_assignments',
   vehicleMaintenance: 'vehicle_maintenance_logs',
-  vehicleFuel: 'vehicle_fuel_logs',
+  vehicleMaintenanceCategories: 'vehicle_maintenance_categories',
   salaryRecords: 'salary_records',
   expenses: 'expenses',
   employeeAdvances: 'employee_advances',
@@ -60,6 +56,7 @@ const COLLECTIONS = {
   attendance: 'attendance_records',
   counters: 'counters',
   refreshTokens: 'refresh_tokens',
+  storedFiles: 'stored_files',
 };
 
 const DOCUMENT_EXPIRY_FIELDS = [
@@ -78,11 +75,11 @@ module.exports = {
   PAY_BASIS,
   ATTENDANCE_STATUS,
   SALARY_RECORD_STATUS,
-  STOCK_LOCATION_TYPES,
+  UNITS,
   MOVEMENT_TYPES,
+  MOVEMENT_STATUS,
   MATERIAL_CONDITIONS,
   ADJUSTMENT_DIRECTIONS,
-  UNITS,
   VEHICLE_STATUS,
   FUEL_TYPES,
   MAINTENANCE_TYPES,

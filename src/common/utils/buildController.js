@@ -25,13 +25,6 @@ function buildController(service, messages) {
     }),
   };
 
-  if (typeof service.restore === 'function') {
-    controller.restore = asyncHandler(async (req, res) => {
-      const data = await service.restore(req.params.id);
-      return ok(res, data, messages.restored || 'Record restored');
-    });
-  }
-
   return controller;
 }
 

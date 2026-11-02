@@ -16,14 +16,8 @@ function duplicateMessage(error) {
   if (keys.includes('idNumber')) {
     return 'This ID number is already in use';
   }
-  if (keys.includes('sku')) {
-    return 'An item with this SKU already exists';
-  }
   if (keys.includes('employee') && keys.includes('site')) {
     return 'This employee is already assigned to the site';
-  }
-  if (keys.includes('site')) {
-    return 'This site already has a stock location';
   }
   if (keys.includes('code')) {
     return 'This code is already in use';

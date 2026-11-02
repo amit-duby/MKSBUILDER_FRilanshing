@@ -9,7 +9,6 @@ const crud = buildController(service, {
   fetched: 'Project fetched',
   updated: 'Project updated',
   removed: 'Project deleted',
-  restored: 'Project restored',
 });
 
 const summary = asyncHandler(async (req, res) => {

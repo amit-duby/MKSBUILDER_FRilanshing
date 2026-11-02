@@ -42,7 +42,7 @@ function applyTotals(doc, totals) {
 }
 
 async function create(body, user) {
-  const employee = await requireDoc(Employee, body.employeeId, 'Employee', { isDeleted: false });
+  const employee = await requireDoc(Employee, body.employeeId, 'Employee');
   const links = await resolveProjectSite(body.projectId, body.siteId);
   const baseAmount = body.baseAmount !== undefined ? body.baseAmount : employee.salary.baseAmount;
   if (baseAmount === undefined || baseAmount === null) {

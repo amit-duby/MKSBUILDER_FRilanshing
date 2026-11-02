@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const sharp = require('sharp');
 const AppError = require('../errors/AppError');
+const StoredFile = require('../../modules/uploads/storedFile.model');
 
 const PRESETS = {
   avatar: { maxWidth: 512, maxHeight: 512, quality: 72, maxBytes: 150 * 1024 },
@@ -98,16 +99,33 @@ async function compressBuffer(input, presetName = 'profile') {
   return prepared.buffer;
 }
 
+function mimeFromExt(ext) {
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function persistStoredFile(key, buffer, ext) {
+  await StoredFile.findOneAndUpdate(
+    { key },
+    { key, mime: mimeFromExt(ext), data: buffer },
+    { upsert: true }
+  );
+}
+
 async function saveCompressedImage(value, { folder, preset } = {}) {
   const input = toBuffer(value);
-  if (!input) return typeof value === 'string' ? value.trim() : value;
+  if (!input) return typeof value === 'string' ? String(value).replace(/[\r\n]/g, '').trim() : value;
 
   const prepared = await prepareImage(input, preset || 'profile');
-  const dir = path.join(process.cwd(), 'uploads', folder || 'employees');
+  const dirName = folder || 'employees';
+  const dir = path.join(process.cwd(), 'uploads', dirName);
   fs.mkdirSync(dir, { recursive: true });
   const filename = `${Date.now()}-${crypto.randomBytes(4).toString('hex')}${prepared.ext}`;
   await fs.promises.writeFile(path.join(dir, filename), prepared.buffer);
-  return `/uploads/${folder || 'employees'}/${filename}`;
+  const key = `/uploads/${dirName}/${filename}`;
+  await persistStoredFile(key, prepared.buffer, prepared.ext);
+  return key;
 }
 
 function removeStoredImage(publicPath, folder) {

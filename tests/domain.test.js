@@ -100,26 +100,24 @@ describe('expense shape', () => {
 });
 
 describe('stock movement plan', () => {
-  it('receives stock into one location', () => {
-    const plan = planStockMovement({ type: 'receipt', quantity: 10.5, toLocationId: 'loc-1' });
+  it('receives stock as an increase', () => {
+    const plan = planStockMovement({ type: 'receipt', quantity: 10.5 });
     assert.equal(plan.quantity, 10.5);
-    assert.deepEqual(plan.increase, [{ locationId: 'loc-1', quantity: 10.5 }]);
+    assert.deepEqual(plan.increase, [{ quantity: 10.5 }]);
     assert.equal(plan.decrease.length, 0);
   });
 
-  it('refuses a transfer to the same location and issues against item stock when no location is sent', () => {
+  it('refuses a transfer and issues against item stock', () => {
     assert.throws(
-      () => planStockMovement({ type: 'transfer', quantity: 2, fromLocationId: 'a', toLocationId: 'a' }),
+      () => planStockMovement({ type: 'transfer', quantity: 2 }),
       (error) => error.statusCode === 400
     );
     const plan = planStockMovement({ type: 'issue', quantity: 2 });
-    assert.equal(plan.decrease[0].locationId, null);
     assert.equal(plan.decrease[0].quantity, 2);
   });
 
   it('reverses a receipt into a decrease', () => {
-    const reversed = reversePlan(planStockMovement({ type: 'receipt', quantity: 8, toLocationId: 'loc-1' }));
-    assert.equal(reversed.decrease[0].locationId, 'loc-1');
+    const reversed = reversePlan(planStockMovement({ type: 'receipt', quantity: 8 }));
     assert.equal(reversed.decrease[0].quantity, 8);
     assert.equal(reversed.increase.length, 0);
   });
@@ -129,9 +127,8 @@ describe('stock movement plan', () => {
       type: 'adjustment',
       quantity: 1,
       direction: 'decrease',
-      fromLocationId: 'loc-1',
     });
-    assert.equal(plan.decrease[0].locationId, 'loc-1');
+    assert.equal(plan.decrease[0].quantity, 1);
     assert.equal(plan.increase.length, 0);
   });
 });

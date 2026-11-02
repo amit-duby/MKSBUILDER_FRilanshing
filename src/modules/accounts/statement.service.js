@@ -110,7 +110,7 @@ function categoryTotal(expenses, category) {
 }
 
 async function employeeStatement(employeeId, query) {
-  const employee = await requireDoc(Employee, employeeId, 'Employee', { isDeleted: false });
+  const employee = await requireDoc(Employee, employeeId, 'Employee');
   const range = resolveRange(query, 12);
   const salaryMatch = salaryRangeMatch(range, { employee: employee._id });
   const expenseMatch = {

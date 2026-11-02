@@ -34,11 +34,11 @@ const sheets = {
     ],
   },
   inventory: {
-    headers: ['name', 'category', 'unit', 'reorderLevel', 'sku', 'description'],
+    headers: ['name', 'units', 'description'],
     rows: [
-      ['Cement OPC 53', 'Material', 'bag', 50, '', ''],
-      ['TMT Bar 12mm', 'Material', 'kg', 200, '', ''],
-      ['Binding Wire', 'Material', 'kg', 20, '', ''],
+      ['Cement OPC 53', 'bag', ''],
+      ['TMT Bar 12mm', 'kg', ''],
+      ['Binding Wire', 'kg', ''],
     ],
   },
   vehicles: {
@@ -82,7 +82,7 @@ async function main() {
     'accounts.type must be one of: expense, impress, local_expense, salary.',
     'employmentType: permanent, contract, daily_wage, staff',
     'attendance status: present, absent, half_day, leave, weekly_off, holiday',
-    'inventory unit: nos, bag, kg, ton, cum, sqm, rmt, liter, box, bundle, set',
+    'inventory units: nos, bag, kg, ton, cum, sqm, rmt, liter, box, bundle, set',
     'Manual forms still work. This file is only for bulk create.',
   ].forEach((line) => guide.addRow([line]));
   guide.getColumn(1).width = 110;

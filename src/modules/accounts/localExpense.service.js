@@ -68,17 +68,17 @@ async function present(id) {
 async function relatedSite(employee) {
   if (employee.site) {
     const site = await Site.findById(employee.site);
-    if (site && !site.isDeleted) return site;
+    if (site) return site;
   }
   const assignment = await Assignment.findOne({ employee: employee._id, isCurrent: true })
     .sort({ startDate: -1 })
     .populate('site');
-  if (assignment && assignment.site && !assignment.site.isDeleted) return assignment.site;
+  if (assignment && assignment.site) return assignment.site;
   return null;
 }
 
 async function employeeRelatedSite(employeeId) {
-  const employee = await requireDoc(Employee, employeeId, 'Employee', { isDeleted: false });
+  const employee = await requireDoc(Employee, employeeId, 'Employee');
   const site = await relatedSite(employee);
   return {
     employee: presentEmployee(employee),
@@ -99,7 +99,7 @@ async function buildPayload(body) {
     throw new AppError('Return amount cannot be more than cash given', 400, 'BAD_REQUEST');
   }
 
-  const employee = await requireDoc(Employee, body.employeeId, 'Employee', { isDeleted: false });
+  const employee = await requireDoc(Employee, body.employeeId, 'Employee');
   let siteId = body.siteId;
   if (!siteId) {
     const site = await relatedSite(employee);
@@ -108,7 +108,7 @@ async function buildPayload(body) {
     }
     siteId = site.id;
   } else {
-    await requireDoc(Site, siteId, 'Site', { isDeleted: false });
+    await requireDoc(Site, siteId, 'Site');
   }
 
   return {

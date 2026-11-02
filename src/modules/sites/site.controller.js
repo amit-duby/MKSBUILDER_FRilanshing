@@ -7,5 +7,4 @@ module.exports = buildController(service, {
   fetched: 'Site fetched',
   updated: 'Site updated',
   removed: 'Site deleted',
-  restored: 'Site restored',
 });

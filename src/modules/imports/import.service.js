@@ -31,6 +31,7 @@ const {
   resolve,
 } = require('./lookups');
 const { startOfBusinessDay } = require('../../common/utils/helpers');
+const { UNITS } = require('../../config/constants');
 
 const ORDER = [
   'departments',
@@ -92,13 +93,10 @@ const TEMPLATE_SHEETS = {
     }],
   },
   inventory: {
-    headers: ['name', 'category', 'unit', 'reorderLevel', 'sku', 'description'],
+    headers: ['name', 'units', 'description'],
     sample: [{
       name: 'Cement OPC 53',
-      category: 'Material',
-      unit: 'bag',
-      reorderLevel: 50,
-      sku: '',
+      units: 'bag',
       description: '',
     }],
   },
@@ -227,7 +225,7 @@ async function importSite(row, commit, _user, cache) {
   if (!project) throw new Error(`Project not found: ${row.projectCode || ''}`);
   const startDate = asDate(row.startDate);
   if (!startDate) throw new Error('startDate is required');
-  const existing = await Site.findOne({ project: project._id, name: new RegExp(`^${name}$`, 'i'), isDeleted: false });
+  const existing = await Site.findOne({ project: project._id, name: new RegExp(`^${name}$`, 'i') });
   if (existing) {
     remember(cache, 'site', existing, name);
     return { status: 'skipped', message: `Site already exists (${existing.code})`, id: existing.id };
@@ -262,7 +260,7 @@ async function importEmployee(row, commit, _user, cache) {
   const baseAmount = asNumber(row.baseAmount);
   if (!(baseAmount >= 0)) throw new Error('baseAmount is required');
   if (row.idNumber) {
-    const existing = await Employee.findOne({ idNumber: String(row.idNumber).trim(), isDeleted: false });
+    const existing = await Employee.findOne({ idNumber: String(row.idNumber).trim() });
     if (existing) {
       remember(cache, 'employee', existing, fullName);
       return { status: 'skipped', message: `Employee already exists (${existing.code})`, id: existing.id };
@@ -303,17 +301,14 @@ async function importEmployee(row, commit, _user, cache) {
 async function importItem(row, commit) {
   const name = String(row.name || '').trim();
   if (!name) throw new Error('name is required');
-  if (!row.category) throw new Error('category is required');
-  if (!row.unit) throw new Error('unit is required');
-  const existing = await Item.findOne({ name: new RegExp(`^${name}$`, 'i'), isDeleted: false });
+  const units = String(row.units || row.unit || '').trim().toLowerCase() || 'nos';
+  if (!UNITS.includes(units)) throw new Error(`units must be one of: ${UNITS.join(', ')}`);
+  const existing = await Item.findOne({ name: new RegExp(`^${name}$`, 'i') });
   if (existing) return { status: 'skipped', message: `Item already exists (${existing.code})`, id: existing.id };
   if (!commit) return { status: 'ready' };
   const created = await inventoryService.items.create({
     name,
-    category: row.category,
-    unit: String(row.unit).toLowerCase(),
-    reorderLevel: asNumber(row.reorderLevel) || 0,
-    sku: row.sku || undefined,
+    units,
     description: row.description,
   });
   return { status: 'created', id: created.id };
@@ -325,7 +320,6 @@ async function importVehicle(row, commit, _user, cache) {
   if (!row.type) throw new Error('type is required');
   const existing = await Vehicle.findOne({
     registrationNumber: new RegExp(`^${registrationNumber}$`, 'i'),
-    isDeleted: false,
   });
   if (existing) return { status: 'skipped', message: `Vehicle already exists (${existing.code})`, id: existing.id };
   let siteId;
@@ -524,6 +518,7 @@ async function templateBuffer() {
   guide.addRow(['Import order is departments, projects, sites, employees, inventory, vehicles, attendance, accounts.']);
   guide.addRow(['Manual forms still work. This file is only for bulk create.']);
   guide.addRow(['accounts.type can be expense, impress, local_expense, or salary.']);
+  guide.addRow(['inventory units: nos, bag, kg, ton, cum, sqm, rmt, liter, box, bundle, set. Blank units default to nos.']);
 
   for (const [name, spec] of Object.entries(TEMPLATE_SHEETS)) {
     const sheet = workbook.addWorksheet(name);

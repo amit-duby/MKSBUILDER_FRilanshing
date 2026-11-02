@@ -5,13 +5,13 @@ const Site = require('../../modules/sites/site.model');
 
 async function resolveProjectSite(projectId, siteId) {
   const [site, givenProject] = await Promise.all([
-    siteId ? requireDoc(Site, siteId, 'Site', { isDeleted: false }) : null,
-    projectId ? requireDoc(Project, projectId, 'Project', { isDeleted: false }) : null,
+    siteId ? requireDoc(Site, siteId, 'Site') : null,
+    projectId ? requireDoc(Project, projectId, 'Project') : null,
   ]);
 
   let project = givenProject;
   if (!project && site && site.project) {
-    project = await requireDoc(Project, site.project, 'Project', { isDeleted: false });
+    project = await requireDoc(Project, site.project, 'Project');
   }
 
   if (site && project && String(site.project) !== String(project._id)) {

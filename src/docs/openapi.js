@@ -6,13 +6,12 @@ const {
   PAY_BASIS,
   ATTENDANCE_STATUS,
   SALARY_RECORD_STATUS,
-  STOCK_LOCATION_TYPES,
+  UNITS,
   MOVEMENT_TYPES,
+  MOVEMENT_STATUS,
   MATERIAL_CONDITIONS,
   ADJUSTMENT_DIRECTIONS,
-  UNITS,
   FUEL_TYPES,
-  MAINTENANCE_TYPES,
   EXPENSE_CATEGORIES,
   PAYMENT_MODE_NOTES,
 } = require('../config/constants');
@@ -133,7 +132,6 @@ function exampleFromSchema(node, fieldName = '') {
     pincode: '226001',
     notes: '',
     remarks: '',
-    sku: 'CEM-53',
     make: 'Tata',
     modelName: 'Signa',
     vendorName: 'Ultratech Cement',
@@ -208,7 +206,6 @@ const paging = [
   query('limit', { type: 'integer', default: 20 }),
   query('search', { type: 'string' }),
   query('sort', { type: 'string' }),
-  query('includeArchived', { type: 'boolean' }),
 ];
 
 const amountLine = {
@@ -351,7 +348,7 @@ const schemas = {
       },
       idPhotos: {
         type: 'array',
-        maxItems: 6,
+        maxItems: 2,
         items: {
           type: 'string',
           minLength: 1,
@@ -417,37 +414,23 @@ const schemas = {
   },
   InventoryItemCreate: {
     type: 'object',
-    required: ['name', 'category', 'unit'],
+    required: ['name', 'units'],
     properties: {
-      sku: { type: 'string', minLength: 1, maxLength: 40 },
       name: { type: 'string', minLength: 1, maxLength: 120, example: 'Cement OPC 53' },
-      category: { type: 'string', minLength: 1, maxLength: 40, example: 'Material' },
-      unit: { type: 'string', enum: UNITS, example: 'bag' },
-      reorderLevel: { type: 'number', minimum: 0, maximum: 100000000, example: 50 },
+      units: { type: 'string', enum: UNITS, example: 'bag' },
       description: { type: 'string', maxLength: 500 },
-      isActive: { type: 'boolean' },
-    },
-  },
-  StockLocationCreate: {
-    type: 'object',
-    required: ['name', 'type'],
-    properties: {
-      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Main store' },
-      type: { type: 'string', enum: STOCK_LOCATION_TYPES, example: 'central_store' },
-      siteId: { ...objectId, description: 'Required when type is site_store. Must be empty for central_store.' },
       isActive: { type: 'boolean' },
     },
   },
   StockMovementCreate: {
     type: 'object',
-    required: ['type', 'itemId', 'quantity'],
+    required: ['type', 'itemId', 'quantity', 'status'],
     properties: {
       type: { type: 'string', enum: MOVEMENT_TYPES, example: 'issue' },
+      status: { type: 'string', enum: MOVEMENT_STATUS, example: 'active' },
       itemId: objectId,
       quantity,
       direction: { type: 'string', enum: ADJUSTMENT_DIRECTIONS, description: 'Required when type is adjustment' },
-      fromLocationId: objectId,
-      toLocationId: objectId,
       projectId: objectId,
       siteId: objectId,
       employeeId: objectId,
@@ -488,50 +471,38 @@ const schemas = {
       documents: { $ref: '#/components/schemas/VehicleDocuments' },
       notes: { type: 'string', maxLength: 1000 },
       siteId: objectId,
+      employeeId: objectId,
       driverId: objectId,
-      assignedAt: dateValue,
-      remarks: { type: 'string', maxLength: 300 },
     },
   },
-  VehicleAssign: {
+  MaintenanceCategoryCreate: {
     type: 'object',
-    required: ['siteId'],
+    required: ['name'],
     properties: {
-      siteId: objectId,
-      driverId: objectId,
-      assignedAt: dateValue,
-      remarks: { type: 'string', maxLength: 300 },
+      name: { type: 'string', minLength: 1, maxLength: 120, example: 'Engine service' },
+      description: { type: 'string', maxLength: 500, example: 'Scheduled engine oil and filter change' },
+      isActive: { type: 'boolean', example: true },
     },
   },
   VehicleMaintenanceCreate: {
     type: 'object',
-    required: ['type', 'description', 'cost'],
+    required: ['category', 'description', 'paidTo', 'amountType', 'amount'],
     properties: {
-      loggedAt: dateValue,
-      type: { type: 'string', enum: MAINTENANCE_TYPES, example: 'service' },
+      category: objectId,
       description: { type: 'string', minLength: 3, maxLength: 500, example: 'Engine oil change' },
-      cost: { ...money, example: 2500 },
-      odometer: { type: 'number', minimum: 0, example: 12500 },
-      vendorName: { type: 'string', maxLength: 120 },
-      nextDueDate: dateValue,
-      recordExpense: { type: 'boolean' },
-      payeeName: { type: 'string', minLength: 1, maxLength: 120 },
-      paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
+      singleImage: { type: 'string', maxLength: 500, nullable: true },
+      paidTo: { type: 'string', minLength: 1, maxLength: 120, example: 'Local garage' },
+      amountType: { type: 'string', enum: PAYMENT_MODE_NOTES, example: 'cash' },
+      amount: { ...money, example: 2500 },
+      date: dateValue,
+      referenceNo: { type: 'string', maxLength: 80, example: 'MNT-104' },
     },
   },
-  VehicleFuelCreate: {
+  VehicleMaintenanceComplete: {
     type: 'object',
-    required: ['liters', 'amount'],
     properties: {
-      loggedAt: dateValue,
-      liters: quantity,
-      amount: { ...positiveMoney, example: 3600 },
-      odometer: { type: 'number', minimum: 0, example: 12500 },
-      siteId: objectId,
-      remarks: { type: 'string', maxLength: 300 },
-      recordExpense: { type: 'boolean' },
-      payeeName: { type: 'string', minLength: 1, maxLength: 120 },
-      paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
+      completedAt: dateValue,
+      singleImage: { type: 'string', maxLength: 500, nullable: true },
     },
   },
   SalaryCreate: {
@@ -743,9 +714,6 @@ const spec = {
     '/departments/remove/{id}': {
       delete: operation('Departments', 'Permanently delete a department', { parameters: [pathParam()] }),
     },
-    '/departments/{id}/restore': {
-      post: operation('Departments', 'Restore a department', { parameters: [pathParam()] }),
-    },
     '/projects': {
       get: operation('Projects', 'List projects', {
         parameters: [...paging, query('status', { type: 'string', enum: PROJECT_STATUS })],
@@ -787,9 +755,6 @@ const spec = {
     '/projects/delete/{id}': {
       delete: operation('Projects', 'Archive a project', { parameters: [pathParam()] }),
     },
-    '/projects/{id}/restore': {
-      post: operation('Projects', 'Restore a project', { parameters: [pathParam()] }),
-    },
     '/sites': {
       get: operation('Sites', 'List sites', { parameters: [...paging, query('projectId', objectId)] }),
     },
@@ -822,9 +787,6 @@ const spec = {
     },
     '/sites/delete/{id}': {
       delete: operation('Sites', 'Archive a site', { parameters: [pathParam()] }),
-    },
-    '/sites/{id}/restore': {
-      post: operation('Sites', 'Restore a site', { parameters: [pathParam()] }),
     },
     '/employees': {
       get: operation('Employees', 'List employees', {
@@ -880,7 +842,7 @@ const spec = {
                   ifscCode: { type: 'string', example: 'SBIN0001234' },
                   notes: { type: 'string' },
                   profilePhoto: { type: 'string', format: 'binary', description: 'JPEG, PNG, or WebP up to 10 MB. Compressed automatically.' },
-                  idPhotos: { type: 'array', maxItems: 6, items: { type: 'string', format: 'binary' }, description: 'Up to 6 ID photos' },
+                  idPhotos: { type: 'array', maxItems: 2, items: { type: 'string', format: 'binary' }, description: '1 or 2 ID photos' },
                 },
               },
             },
@@ -895,11 +857,30 @@ const spec = {
     '/employees/update/{id}': {
       patch: operation('Employees', 'Update an employee', {
         parameters: [pathParam()],
-        body: jsonBody({ designation: 'Senior mason', phone: '9876543210' }),
+        body: {
+          required: true,
+          content: {
+            ...jsonBody({ designation: 'Senior mason', phone: '9876543210' }).content,
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  fullName: { type: 'string' },
+                  phone: { type: 'string' },
+                  designation: { type: 'string', example: 'Senior mason' },
+                  profilePhoto: { type: 'string', format: 'binary', description: 'Replace the profile photo with one JPEG, PNG, or WebP file.' },
+                  idPhotos: {
+                    type: 'array',
+                    maxItems: 2,
+                    items: { type: 'string', format: 'binary' },
+                    description: '1 or 2 ID photos. Each new file replaces the photo in that slot; empty slots are filled. A 3rd photo is rejected.',
+                  },
+                },
+              },
+            },
+          },
+        },
       }),
-    },
-    '/employees/{id}/restore': {
-      post: operation('Employees', 'Restore an employee', { parameters: [pathParam()] }),
     },
     '/employees/{id}/assignments': {
       get: operation('Employees', 'List site assignments', { parameters: [pathParam()] }),
@@ -967,10 +948,7 @@ const spec = {
         status: '201',
         body: jsonBody({
           name: 'Cement OPC 53',
-          category: 'Material',
-          unit: 'bag',
-          sku: 'CEM-53',
-          reorderLevel: 50,
+          units: 'bag',
           description: '',
           isActive: true,
         }, 'InventoryItemCreate'),
@@ -978,63 +956,83 @@ const spec = {
     },
     '/inventory/items/{id}': {
       get: operation('Inventory', 'Get an item', { parameters: [pathParam()] }),
-      patch: operation('Inventory', 'Update an item', { parameters: [pathParam()], body: jsonBody({ reorderLevel: 40 }) }),
+      patch: operation('Inventory', 'Update an item', { parameters: [pathParam()], body: jsonBody({ name: 'Cement OPC 53', units: 'bag' }) }),
       delete: operation('Inventory', 'Archive an item', { parameters: [pathParam()] }),
     },
-    '/inventory/items/{id}/restore': {
-      post: operation('Inventory', 'Restore an item', { parameters: [pathParam()] }),
-    },
-    '/inventory/locations': {
-      get: operation('Inventory', 'List stock locations', { parameters: paging }),
-      post: operation('Inventory', 'Create a stock location', {
-        status: '201',
-        body: jsonBody({ name: 'Main store', type: 'central_store', isActive: true }, 'StockLocationCreate'),
-      }),
-    },
-    '/inventory/locations/{id}': {
-      get: operation('Inventory', 'Get a stock location', { parameters: [pathParam()] }),
-      patch: operation('Inventory', 'Update a stock location', { parameters: [pathParam()], body: jsonBody({ name: 'Main store', isActive: true }) }),
-      delete: operation('Inventory', 'Archive a stock location', { parameters: [pathParam()] }),
-    },
-    '/inventory/locations/{id}/restore': {
-      post: operation('Inventory', 'Restore a stock location', { parameters: [pathParam()] }),
-    },
     '/inventory/stock': {
-      get: operation('Inventory', 'All stock items with received, issued, remaining, counts, and low-stock items', {
-        parameters: [...paging, query('itemId', objectId), query('locationId', objectId)],
+      get: operation('Inventory', 'All stock items with received, issued, remaining, and counts. Pass below to list only low-stock items.', {
+        parameters: [
+          ...paging,
+          query('itemId', objectId),
+          query('below', { type: 'number', minimum: 0, description: 'Return only items whose remaining quantity is at most this value. counts.low uses 0 when below is omitted.' }),
+        ],
       }),
-    },
-    '/inventory/stock/low': {
-      get: operation('Inventory', 'Items at or below reorder level'),
     },
     '/inventory/movements': {
       get: operation('Inventory', 'List inward stock movements (receipts, returns, transfers, adjustments)', {
         parameters: [
           ...paging,
           query('itemId', objectId),
-          query('locationId', objectId),
           query('projectId', objectId),
           query('siteId', objectId),
           query('employeeId', objectId),
           query('vehicleTypeId', objectId),
+          query('status', { type: 'string', enum: MOVEMENT_STATUS }),
           query('from', { type: 'string', format: 'date' }),
           query('to', { type: 'string', format: 'date' }),
         ],
       }),
       post: operation('Inventory', 'Record a stock movement', {
         status: '201',
-        body: jsonBody({
-          type: 'issue',
-          itemId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          quantity: 10,
-          fromLocationId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          vehicleTypeId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          movementDate: '2026-04-14',
-          remarks: '',
-        }, 'StockMovementCreate'),
+        body: {
+          required: true,
+          content: {
+            ...jsonBody({
+              type: 'issue',
+              status: 'active',
+              itemId: '64b0c0c0c0c0c0c0c0c0c0c0',
+              quantity: 10,
+              projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
+              siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
+              employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+              vehicleTypeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+              movementDate: '2026-04-14',
+              remarks: '',
+            }, 'StockMovementCreate').content,
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['type', 'itemId', 'quantity', 'status'],
+                properties: {
+                  type: { type: 'string', enum: MOVEMENT_TYPES, example: 'receipt' },
+                  status: { type: 'string', enum: MOVEMENT_STATUS, example: 'active' },
+                  itemId: objectId,
+                  quantity,
+                  direction: { type: 'string', enum: ADJUSTMENT_DIRECTIONS },
+                  projectId: objectId,
+                  siteId: objectId,
+                  employeeId: objectId,
+                  vehicleTypeId: objectId,
+                  unitCost: money,
+                  vendorName: { type: 'string', maxLength: 120 },
+                  condition: { type: 'string', enum: MATERIAL_CONDITIONS },
+                  billNo: { type: 'string', maxLength: 80 },
+                  challanNo: { type: 'string', maxLength: 80 },
+                  paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES },
+                  address: { type: 'string', maxLength: 300 },
+                  movementDate: dateValue,
+                  reference: { type: 'string', maxLength: 80 },
+                  remarks: { type: 'string', maxLength: 500 },
+                  materialReceiptPhoto: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'One JPEG, PNG, or WebP receipt photo. Files under 1 MB stay as-is; larger files are compressed.',
+                  },
+                },
+              },
+            },
+          },
+        },
       }),
     },
     '/inventory/movements/{id}': {
@@ -1042,12 +1040,34 @@ const spec = {
       delete: operation('Inventory', 'Permanently delete a stock movement and reverse its stock effect', { parameters: [pathParam()] }),
       patch: operation('Inventory', 'Update a stock movement and recalculate remaining stock', {
         parameters: [pathParam()],
-        body: jsonBody({
-          quantity: 80,
-          vendorName: 'Ultratech Cement',
-          billNo: 'INV-1024',
-          remarks: 'Corrected inward quantity',
-        }),
+        body: {
+          required: true,
+          content: {
+            ...jsonBody({
+              quantity: 80,
+              vendorName: 'Ultratech Cement',
+              billNo: 'INV-1024',
+              remarks: 'Corrected inward quantity',
+            }).content,
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  status: { type: 'string', enum: MOVEMENT_STATUS, example: 'inactive' },
+                  quantity,
+                  vendorName: { type: 'string', maxLength: 120 },
+                  billNo: { type: 'string', maxLength: 80 },
+                  remarks: { type: 'string', maxLength: 500 },
+                  materialReceiptPhoto: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Replace the receipt photo with one JPEG, PNG, or WebP file.',
+                  },
+                },
+              },
+            },
+          },
+        },
       }),
     },
     '/inventory/issues': {
@@ -1055,11 +1075,11 @@ const spec = {
         parameters: [
           ...paging,
           query('itemId', objectId),
-          query('locationId', objectId),
           query('projectId', objectId),
           query('siteId', objectId),
           query('employeeId', objectId),
           query('vehicleTypeId', objectId),
+          query('status', { type: 'string', enum: MOVEMENT_STATUS }),
           query('from', { type: 'string', format: 'date' }),
           query('to', { type: 'string', format: 'date' }),
         ],
@@ -1073,13 +1093,14 @@ const spec = {
         body: jsonBody({
           quantity: 4,
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          status: 'inactive',
           remarks: 'Corrected issue quantity',
         }),
       }),
     },
     '/vehicles': {
-      get: operation('Vehicles', 'List vehicles', { parameters: [...paging, query('status', { type: 'string' }), query('type', { type: 'string' }), query('siteId', objectId)] }),
-      post: operation('Vehicles', 'Create a vehicle, and assign it when siteId is sent', {
+      get: operation('Vehicles', 'List vehicles', { parameters: [...paging, query('status', { type: 'string' }), query('type', { type: 'string' }), query('siteId', objectId), query('employeeId', objectId)] }),
+      post: operation('Vehicles', 'Create a vehicle', {
         status: '201',
         body: jsonBody({
           registrationNumber: 'UP32 AB 2002',
@@ -1097,8 +1118,7 @@ const spec = {
           },
           notes: '',
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          driverId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          assignedAt: '2026-04-14',
+          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
         }, 'VehicleCreate'),
       }),
     },
@@ -1107,42 +1127,76 @@ const spec = {
         parameters: [query('withinDays', { type: 'integer', default: 30 })],
       }),
     },
+    '/vehicles/maintenance-categories': {
+      get: operation('Vehicles', 'List maintenance categories', {
+        parameters: [...paging, query('isActive', { type: 'boolean' })],
+      }),
+    },
+    '/vehicles/maintenance-categories/create': {
+      post: operation('Vehicles', 'Create a maintenance category', {
+        status: '201',
+        body: jsonBody({
+          name: 'Engine service',
+          description: 'Scheduled engine oil and filter change',
+          isActive: true,
+        }, 'MaintenanceCategoryCreate'),
+      }),
+    },
+    '/vehicles/maintenance-categories/get-by-id/{id}': {
+      get: operation('Vehicles', 'Get a maintenance category', { parameters: [pathParam()] }),
+    },
+    '/vehicles/maintenance-categories/update/{id}': {
+      patch: operation('Vehicles', 'Update a maintenance category', {
+        parameters: [pathParam()],
+        body: jsonBody({ name: 'Engine service', isActive: true }, 'MaintenanceCategoryCreate'),
+      }),
+    },
+    '/vehicles/maintenance-categories/remove/{id}': {
+      delete: operation('Vehicles', 'Permanently delete a maintenance category', { parameters: [pathParam()] }),
+    },
     '/vehicles/{id}': {
       get: operation('Vehicles', 'Get a vehicle', { parameters: [pathParam()] }),
       patch: operation('Vehicles', 'Update a vehicle', { parameters: [pathParam()], body: jsonBody({ notes: 'New tyres fitted' }) }),
       delete: operation('Vehicles', 'Archive a vehicle', { parameters: [pathParam()] }),
     },
-    '/vehicles/{id}/restore': {
-      post: operation('Vehicles', 'Restore a vehicle', { parameters: [pathParam()] }),
-    },
-    '/vehicles/{id}/assign': {
-      post: operation('Vehicles', 'Assign an available vehicle', {
-        parameters: [pathParam()],
-        body: jsonBody({ siteId: '64b0c0c0c0c0c0c0c0c0c0c0', assignedAt: '2026-04-14' }, 'VehicleAssign'),
-      }),
-    },
-    '/vehicles/{id}/release': {
-      post: operation('Vehicles', 'Release an assigned vehicle', {
-        parameters: [pathParam()],
-        body: jsonBody({ releasedAt: '2026-04-15' }),
-      }),
-    },
-    '/vehicles/{id}/assignments': {
-      get: operation('Vehicles', 'Assignment history', { parameters: [pathParam(), ...paging] }),
-    },
     '/vehicles/{id}/maintenance': {
       get: operation('Vehicles', 'List maintenance logs', { parameters: [pathParam()] }),
       post: operation('Vehicles', 'Add a maintenance log', {
         parameters: [pathParam()],
-        body: jsonBody({
-          type: 'service',
-          description: 'Engine oil change',
-          cost: 2500,
-          odometer: 12500,
-          vendorName: 'Local garage',
-          nextDueDate: '2026-10-14',
-          recordExpense: false,
-        }, 'VehicleMaintenanceCreate'),
+        body: {
+          required: true,
+          content: {
+            ...jsonBody({
+              category: '64b0c0c0c0c0c0c0c0c0c0c0',
+              description: 'Engine oil change',
+              paidTo: 'Local garage',
+              amountType: 'cash',
+              amount: 2500,
+              date: '2026-10-14',
+              referenceNo: 'MNT-104',
+            }, 'VehicleMaintenanceCreate').content,
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['category', 'description', 'paidTo', 'amountType', 'amount'],
+                properties: {
+                  category: objectId,
+                  description: { type: 'string', minLength: 3, maxLength: 500, example: 'Engine oil change' },
+                  paidTo: { type: 'string', minLength: 1, maxLength: 120, example: 'Local garage' },
+                  amountType: { type: 'string', enum: PAYMENT_MODE_NOTES, example: 'cash' },
+                  amount: { ...money, example: 2500 },
+                  date: dateValue,
+                  referenceNo: { type: 'string', maxLength: 80, example: 'MNT-104' },
+                  singleImage: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'One JPEG, PNG, or WebP photo. Files under 1 MB stay as-is; larger files are compressed.',
+                  },
+                },
+              },
+            },
+          },
+        },
       }),
     },
     '/vehicles/{id}/maintenance/{maintenanceId}': {
@@ -1153,26 +1207,25 @@ const spec = {
     '/vehicles/{id}/maintenance/{maintenanceId}/complete': {
       post: operation('Vehicles', 'Complete a maintenance log', {
         parameters: [pathParam(), pathParam('maintenanceId')],
-        body: jsonBody({ completionNote: 'Done' }),
-      }),
-    },
-    '/vehicles/{id}/fuel-logs': {
-      get: operation('Vehicles', 'List fuel logs', { parameters: [pathParam()] }),
-      post: operation('Vehicles', 'Add a fuel log', {
-        parameters: [pathParam()],
-        body: jsonBody({
-          liters: 40,
-          amount: 3600,
-          odometer: 12500,
-          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          remarks: '',
-          recordExpense: false,
-        }, 'VehicleFuelCreate'),
-      }),
-    },
-    '/vehicles/{id}/fuel-logs/{fuelLogId}': {
-      delete: operation('Vehicles', 'Permanently delete a fuel log', {
-        parameters: [pathParam(), pathParam('fuelLogId')],
+        body: {
+          required: true,
+          content: {
+            ...jsonBody({ completedAt: '2026-10-15' }, 'VehicleMaintenanceComplete').content,
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                properties: {
+                  completedAt: dateValue,
+                  singleImage: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'Replace the maintenance photo with one JPEG, PNG, or WebP file.',
+                  },
+                },
+              },
+            },
+          },
+        },
       }),
     },
     '/accounts/summary': {

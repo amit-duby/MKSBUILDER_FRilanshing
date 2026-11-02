@@ -182,8 +182,8 @@ async function buildPayload(body) {
     throw new AppError('Given amount must be greater than zero', 400, 'BAD_REQUEST');
   }
   const [employee, site] = await Promise.all([
-    requireDoc(Employee, body.employeeId, 'Employee', { isDeleted: false }),
-    requireDoc(Site, body.siteId, 'Site', { isDeleted: false }),
+    requireDoc(Employee, body.employeeId, 'Employee'),
+    requireDoc(Site, body.siteId, 'Site'),
   ]);
   return {
     date: body.date || new Date(),

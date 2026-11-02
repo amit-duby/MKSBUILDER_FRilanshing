@@ -1,7 +1,7 @@
 const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const { nextCode } = require('../../common/utils/sequence');
-const { assignDefined, archivedFilter, containsRegex, parseSort } = require('../../common/utils/helpers');
+const { assignDefined, containsRegex, parseSort } = require('../../common/utils/helpers');
 const Department = require('./department.model');
 const Employee = require('../employees/employee.model');
 
@@ -10,7 +10,7 @@ const SORT_FIELDS = ['name', 'code', 'createdAt'];
 
 async function getActive(id) {
   const doc = await repo.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Department not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Department not found', 404, 'NOT_FOUND');
   return doc;
 }
 
@@ -18,7 +18,6 @@ async function withHeadcount(doc) {
   const json = doc.toJSON();
   json.activeEmployeeCount = await Employee.countDocuments({
     department: doc._id,
-    isDeleted: false,
     status: 'active',
   });
   return json;
@@ -34,7 +33,7 @@ async function create(body) {
 }
 
 async function list(query) {
-  const filter = { ...archivedFilter(query) };
+  const filter = {};
   if (query.search) {
     const pattern = containsRegex(query.search);
     filter.$or = [{ name: pattern }, { code: pattern }];
@@ -58,7 +57,6 @@ async function update(id, body) {
   if (body.isActive === false) {
     const activeEmployees = await Employee.exists({
       department: doc._id,
-      isDeleted: false,
       status: 'active',
     });
     if (activeEmployees) {
@@ -78,21 +76,11 @@ async function update(id, body) {
 async function remove(id) {
   const doc = await repo.findById(id);
   if (!doc) throw new AppError('Department not found', 404, 'NOT_FOUND');
-  const inUse = await Employee.exists({ department: doc._id, isDeleted: false });
+  const inUse = await Employee.exists({ department: doc._id });
   if (inUse) {
     throw new AppError('Reassign employees before deleting this department', 409, 'CONFLICT');
   }
   await doc.deleteOne();
 }
 
-async function restore(id) {
-  const doc = await repo.findById(id);
-  if (!doc) throw new AppError('Department not found', 404, 'NOT_FOUND');
-  if (!doc.isDeleted) throw new AppError('Department is already active', 400, 'BAD_REQUEST');
-  doc.isDeleted = false;
-  doc.isActive = true;
-  await doc.save();
-  return doc;
-}
-
-module.exports = { create, list, getById, update, remove, restore };
+module.exports = { create, list, getById, update, remove };

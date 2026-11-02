@@ -1,5 +1,5 @@
 const mongoose = require('mongoose');
-const { COLLECTIONS, MAINTENANCE_TYPES } = require('../../config/constants');
+const { COLLECTIONS, PAYMENT_MODE_NOTES } = require('../../config/constants');
 const applyJson = require('../../common/utils/applyJson');
 
 const maintenanceSchema = new mongoose.Schema(
@@ -10,16 +10,20 @@ const maintenanceSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    loggedAt: { type: Date, required: true },
-    type: { type: String, enum: MAINTENANCE_TYPES, required: true },
+    category: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'MaintenanceCategory',
+      required: true,
+      index: true,
+    },
     description: { type: String, required: true, trim: true, maxlength: 500 },
-    cost: { type: Number, required: true, min: 0 },
-    odometer: { type: Number, min: 0 },
-    vendorName: { type: String, trim: true, maxlength: 120, default: '' },
-    nextDueDate: { type: Date },
+    singleImage: { type: String, trim: true, maxlength: 500, default: null },
+    paidTo: { type: String, required: true, trim: true, maxlength: 120 },
+    amountType: { type: String, enum: PAYMENT_MODE_NOTES, required: true },
+    amount: { type: Number, required: true, min: 0 },
+    date: { type: Date, required: true, index: true },
+    referenceNo: { type: String, trim: true, maxlength: 80, default: '' },
     completedAt: { type: Date },
-    completionNote: { type: String, trim: true, maxlength: 500, default: '' },
-    expense: { type: mongoose.Schema.Types.ObjectId, ref: 'Expense' },
   },
   { timestamps: true, collection: COLLECTIONS.vehicleMaintenance }
 );

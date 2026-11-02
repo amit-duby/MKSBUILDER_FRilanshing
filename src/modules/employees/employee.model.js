@@ -32,7 +32,14 @@ const employeeSchema = new mongoose.Schema(
     idType: { type: String, trim: true, maxlength: 40, default: '' },
     idNumber: { type: String, trim: true, maxlength: 40, default: null },
     profilePhoto: { type: String, trim: true, maxlength: 500, default: null },
-    idPhotos: { type: [{ type: String, trim: true, maxlength: 500 }], default: [] },
+    idPhotos: {
+      type: [{ type: String, trim: true, maxlength: 500 }],
+      default: [],
+      validate: {
+        validator: (value) => !value || value.length <= 2,
+        message: 'At most 2 ID photos',
+      },
+    },
     site: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Site',
@@ -52,12 +59,12 @@ const employeeSchema = new mongoose.Schema(
       allowances: { type: [allowanceSchema], default: [] },
     },
     notes: { type: String, trim: true, maxlength: 1000, default: '' },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.employees }
 );
 
 employeeSchema.index({ department: 1, status: 1 });
+employeeSchema.index({ createdAt: -1 });
 employeeSchema.index(
   { idNumber: 1 },
   { unique: true, partialFilterExpression: { idNumber: { $type: 'string' } } }

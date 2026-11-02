@@ -23,11 +23,12 @@ async function authenticate(req, _res, next) {
     throw new AppError('Invalid or expired token', 401, 'UNAUTHORIZED');
   }
 
-  const user = await User.findById(payload.sub).select('+tokenVersion');
+  const user = await User.findById(payload.sub).select('+tokenVersion').lean();
   if (!user || !user.isActive || user.tokenVersion !== payload.tv) {
     throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
   }
 
+  user.id = String(user._id);
   assertAdmin(user);
 
   req.user = {

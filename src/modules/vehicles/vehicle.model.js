@@ -23,7 +23,8 @@ const vehicleSchema = new mongoose.Schema(
     year: { type: Number, min: 1980, max: 2100 },
     fuelType: { type: String, enum: FUEL_TYPES, default: 'diesel' },
     status: { type: String, enum: VEHICLE_STATUS, default: 'available', index: true },
-    currentAssignment: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleAssignment' },
+    employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', default: null, index: true },
+    site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site', default: null, index: true },
     odometer: { type: Number, min: 0 },
     documents: {
       insuranceExpiry: Date,
@@ -32,7 +33,6 @@ const vehicleSchema = new mongoose.Schema(
       pollutionExpiry: Date,
     },
     notes: { type: String, trim: true, maxlength: 1000, default: '' },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.vehicles }
 );

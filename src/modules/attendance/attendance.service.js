@@ -128,7 +128,7 @@ function assertEmploymentWindow(employee, attendanceDate) {
 async function loadMarkContext(input) {
   const attendanceDate = startOfBusinessDay(input.date);
   const [employee, links, existing] = await Promise.all([
-    requireDoc(Employee, input.employeeId, 'Employee', { isDeleted: false }),
+    requireDoc(Employee, input.employeeId, 'Employee'),
     resolveProjectSite(input.projectId || undefined, input.siteId || undefined),
     Attendance.findOne({
       employee: input.employeeId,
@@ -177,7 +177,7 @@ function dateFilter(query) {
 }
 
 async function employeeIdsForDepartment(departmentId) {
-  return Employee.find({ department: departmentId, isDeleted: false }).distinct('_id');
+  return Employee.find({ department: departmentId }).distinct('_id');
 }
 
 async function applyPersonFilters(filter, query) {
@@ -229,7 +229,7 @@ const service = {
     }
 
     const [employees, existingRows] = await Promise.all([
-      Employee.find({ _id: { $in: employeeIds }, isDeleted: false }),
+      Employee.find({ _id: { $in: employeeIds } }),
       Attendance.find({ employee: { $in: employeeIds }, attendanceDate }),
       Promise.all(linkJobs),
     ]);
@@ -343,7 +343,7 @@ const service = {
     };
     const attendanceDate = startOfBusinessDay(input.date);
     const [employee, links] = await Promise.all([
-      requireDoc(Employee, input.employeeId, 'Employee', { isDeleted: false }),
+      requireDoc(Employee, input.employeeId, 'Employee'),
       resolveProjectSite(input.projectId || undefined, input.siteId || undefined),
     ]);
     assertEmploymentWindow(employee, attendanceDate);
@@ -373,7 +373,7 @@ const service = {
 
   async register(query) {
     const attendanceDate = startOfBusinessDay(query.date);
-    const filter = { isDeleted: false };
+    const filter = {};
     if (query.departmentId) filter.department = query.departmentId;
     if (query.siteId) {
       const ids = await Assignment.find({ site: query.siteId, isCurrent: true }).distinct('employee');

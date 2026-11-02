@@ -29,12 +29,18 @@ const accountNumber = z
   .regex(/^[0-9]{9,18}$/, 'Account number must be 9 to 18 digits');
 
 const photoPath = z.string().trim().min(1).max(500);
+const idPhotos = z.preprocess((value) => {
+  if (value == null || value === '') return undefined;
+  if (Array.isArray(value)) return value;
+  if (typeof value === 'string' && value.trim()) return [value.trim()];
+  return value;
+}, z.array(photoPath).max(2).optional());
 
 const identityShape = {
   idType: optionalText(40),
   idNumber: optionalText(40),
   profilePhoto: photoPath.nullable().optional(),
-  idPhotos: z.array(photoPath).max(6).optional(),
+  idPhotos,
   bankName: optionalText(120),
   accountNumber: accountNumber.optional(),
   ifscCode: ifscCode.optional(),
@@ -99,7 +105,7 @@ const updateBody = z.object({
   idType: optionalText(40),
   idNumber: optionalText(40).nullable(),
   profilePhoto: photoPath.nullable().optional(),
-  idPhotos: z.array(photoPath).max(6).optional(),
+  idPhotos,
   bankName: optionalText(120),
   accountNumber: accountNumber.nullable().optional(),
   ifscCode: ifscCode.nullable().optional(),

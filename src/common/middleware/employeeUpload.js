@@ -3,6 +3,7 @@ const AppError = require('../errors/AppError');
 const { saveCompressedImage } = require('../utils/compressImage');
 
 const ALLOWED_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const MAX_ID_PHOTOS = 2;
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -13,7 +14,7 @@ const upload = multer({
     }
     callback(null, true);
   },
-  limits: { fileSize: 10 * 1024 * 1024, files: 7 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 3 },
 });
 
 function parseMaybeJson(value) {
@@ -36,6 +37,22 @@ function parseMaybeJson(value) {
 function emptyToUndefined(value) {
   if (value === '' || value === undefined) return undefined;
   return value;
+}
+
+function isIdPhotoField(name) {
+  return /^(idPhotos?|id_photos?)(\[\d*\])?$/i.test(String(name || ''));
+}
+
+function isProfileField(name) {
+  return /^(profilePhoto|profile_photo)(\[\d*\])?$/i.test(String(name || ''));
+}
+
+function asPhotoList(value) {
+  if (value == null || value === '') return [];
+  const parsed = typeof value === 'string' ? parseMaybeJson(value) : value;
+  if (Array.isArray(parsed)) return parsed.filter(Boolean);
+  if (typeof parsed === 'string' && parsed.trim()) return [parsed.trim()];
+  return [];
 }
 
 function coerceEmployeeFields(body) {
@@ -76,7 +93,9 @@ function coerceEmployeeFields(body) {
     }
   }
 
-  if (typeof body.idPhotos === 'string') body.idPhotos = parseMaybeJson(body.idPhotos);
+  const photos = asPhotoList(body.idPhotos);
+  if (photos.length) body.idPhotos = photos;
+  else delete body.idPhotos;
 
   [
     'siteId', 'email', 'phone', 'notes', 'address', 'profilePhoto',
@@ -89,17 +108,14 @@ function coerceEmployeeFields(body) {
 }
 
 function employeeUpload(req, res, next) {
-  upload.fields([
-    { name: 'profilePhoto', maxCount: 1 },
-    { name: 'idPhotos', maxCount: 6 },
-  ])(req, res, async (error) => {
+  upload.any()(req, res, async (error) => {
     if (error) {
       if (error instanceof AppError) return next(error);
       if (error.code === 'LIMIT_FILE_SIZE') {
         return next(new AppError('Each photo must be 10 MB or smaller. It will be compressed automatically.', 400, 'BAD_REQUEST'));
       }
       if (error.code === 'LIMIT_FILE_COUNT' || error.code === 'LIMIT_UNEXPECTED_FILE') {
-        return next(new AppError('Use profilePhoto for one photo and idPhotos for up to 6 ID photos', 400, 'BAD_REQUEST'));
+        return next(new AppError('Use profilePhoto for one photo and idPhotos for 1 or 2 ID photos', 400, 'BAD_REQUEST'));
       }
       return next(new AppError('Employee photo upload failed', 400, 'BAD_REQUEST'));
     }
@@ -107,20 +123,37 @@ function employeeUpload(req, res, next) {
     req.body = req.body || {};
     coerceEmployeeFields(req.body);
 
+    const files = Array.isArray(req.files) ? req.files : [];
+    const unexpected = files.find((file) => !isIdPhotoField(file.fieldname) && !isProfileField(file.fieldname));
+    if (unexpected) {
+      return next(new AppError('Use profilePhoto for one photo and idPhotos for 1 or 2 ID photos', 400, 'BAD_REQUEST'));
+    }
+
+    const profileFiles = files.filter((file) => isProfileField(file.fieldname));
+    const idFiles = files.filter((file) => isIdPhotoField(file.fieldname));
+    if (profileFiles.length > 1) {
+      return next(new AppError('Use profilePhoto for one photo', 400, 'BAD_REQUEST'));
+    }
+    if (idFiles.length > MAX_ID_PHOTOS) {
+      return next(new AppError('You can upload 1 or 2 ID photos', 400, 'BAD_REQUEST'));
+    }
+
     try {
-      const files = req.files || {};
-      if (files.profilePhoto && files.profilePhoto[0]) {
-        req.body.profilePhoto = await saveCompressedImage(files.profilePhoto[0].buffer, {
+      if (profileFiles[0]) {
+        req.body.profilePhoto = await saveCompressedImage(profileFiles[0].buffer, {
           folder: 'employees',
           preset: 'profile',
         });
       }
-      if (files.idPhotos && files.idPhotos.length) {
-        const saved = await Promise.all(files.idPhotos.map((file) => saveCompressedImage(file.buffer, {
+      if (idFiles.length) {
+        const saved = await Promise.all(idFiles.map((file) => saveCompressedImage(file.buffer, {
           folder: 'employees',
           preset: 'id',
         })));
-        req.body.idPhotos = (Array.isArray(req.body.idPhotos) ? req.body.idPhotos : []).concat(saved);
+        req.body.idPhotos = asPhotoList(req.body.idPhotos).concat(saved);
+      }
+      if (Array.isArray(req.body.idPhotos) && req.body.idPhotos.length > MAX_ID_PHOTOS) {
+        return next(new AppError('You can upload 1 or 2 ID photos', 400, 'BAD_REQUEST'));
       }
       return next();
     } catch (compressError) {

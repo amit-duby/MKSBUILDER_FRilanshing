@@ -1,31 +1,11 @@
-const { COLLECTIONS, CURRENCY } = require('../../config/constants');
+const { CURRENCY } = require('../../config/constants');
 const Project = require('../projects/project.model');
 const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
 const Vehicle = require('../vehicles/vehicle.model');
-const Item = require('../inventory/item.model');
 const { startOfUtcDay } = require('../../common/utils/helpers');
 const { summary } = require('../accounts/statement.service');
 const Attendance = require('../attendance/attendance.model');
-
-async function lowStockCount() {
-  const [row] = await Item.aggregate([
-    { $match: { isDeleted: false, isActive: true, reorderLevel: { $gt: 0 } } },
-    {
-      $lookup: {
-        from: COLLECTIONS.stockBalances,
-        localField: '_id',
-        foreignField: 'item',
-        as: 'balances',
-      },
-    },
-    { $addFields: { onHand: { $ifNull: [{ $sum: '$balances.quantity' }, 0] } } },
-    { $match: { $expr: { $lte: ['$onHand', '$reorderLevel'] } } },
-    { $count: 'count' },
-  ]);
-
-  return row ? row.count : 0;
-}
 
 async function attendanceToday() {
   const date = startOfUtcDay(new Date());
@@ -58,22 +38,18 @@ async function overview() {
     employeeTotal,
     employeeActive,
     vehicleAvailable,
-    vehicleAssigned,
     vehicleMaintenance,
-    lowStock,
     accountsThisMonth,
     attendance,
   ] = await Promise.all([
-    Project.countDocuments({ isDeleted: false }),
-    Project.countDocuments({ isDeleted: false, status: 'active' }),
-    Site.countDocuments({ isDeleted: false }),
-    Site.countDocuments({ isDeleted: false, status: 'active' }),
-    Employee.countDocuments({ isDeleted: false }),
-    Employee.countDocuments({ isDeleted: false, status: 'active' }),
-    Vehicle.countDocuments({ isDeleted: false, status: 'available' }),
-    Vehicle.countDocuments({ isDeleted: false, status: 'assigned' }),
-    Vehicle.countDocuments({ isDeleted: false, status: 'maintenance' }),
-    lowStockCount(),
+    Project.countDocuments({}),
+    Project.countDocuments({ status: 'active' }),
+    Site.countDocuments({}),
+    Site.countDocuments({ status: 'active' }),
+    Employee.countDocuments({}),
+    Employee.countDocuments({ status: 'active' }),
+    Vehicle.countDocuments({ status: 'available' }),
+    Vehicle.countDocuments({ status: 'maintenance' }),
     summary({}),
     attendanceToday(),
   ]);
@@ -85,10 +61,8 @@ async function overview() {
     employees: { total: employeeTotal, active: employeeActive },
     vehicles: {
       available: vehicleAvailable,
-      assigned: vehicleAssigned,
       maintenance: vehicleMaintenance,
     },
-    inventory: { lowStockCount: lowStock },
     attendanceToday: attendance,
     accountsThisMonth,
   };

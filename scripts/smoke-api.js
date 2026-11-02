@@ -8,7 +8,6 @@ process.env.LOG_LEVEL = 'silent';
 const assert = require('node:assert/strict');
 const mongoose = require('mongoose');
 const { connectDatabase, disconnectDatabase } = require('../src/config/database');
-const { ensureMainStore } = require('../src/seed/ensureMainStore');
 const { lastTestMail } = require('../src/common/mail/mailer');
 const app = require('../src/app');
 
@@ -37,7 +36,6 @@ function expectStatus(result, status, label) {
 async function main() {
   await connectDatabase(process.env.MONGODB_URI);
   await mongoose.connection.dropDatabase();
-  const mainStore = await ensureMainStore();
 
   const server = app.listen(0);
   const sockets = new Set();
@@ -90,10 +88,6 @@ async function main() {
       token,
       body: { projectId: project.id, name: 'Tower A', startDate: '2026-04-01' },
     }), 201, 'site').data;
-
-    const locations = expectStatus(await call(base, 'GET', `/inventory/locations?siteId=${site.id}`, { token }), 200, 'site store');
-    assert.equal(locations.data.length, 1);
-    assert.equal(locations.data[0].type, 'site_store');
 
     const employee = expectStatus(await call(base, 'POST', '/employees', {
       token,
@@ -229,17 +223,21 @@ async function main() {
 
     const item = expectStatus(await call(base, 'POST', '/inventory/items', {
       token,
-      body: { name: 'OPC Cement', category: 'Cement', unit: 'bag', reorderLevel: 20 },
+      body: { name: 'OPC Cement', units: 'bag' },
     }), 201, 'item').data;
 
     expectStatus(await call(base, 'POST', '/inventory/movements', {
       token,
       body: {
         type: 'receipt',
+        status: 'active',
         itemId: item.id,
         quantity: 10,
-        toLocationId: mainStore.id,
         unitCost: 380,
+        vendorName: 'Ultratech Cement',
+        condition: 'new',
+        billNo: 'INV-1024',
+        paymentMode: 'cash',
       },
     }), 201, 'receipt');
 
@@ -247,9 +245,9 @@ async function main() {
       token,
       body: {
         type: 'issue',
+        status: 'active',
         itemId: item.id,
         quantity: 50,
-        fromLocationId: mainStore.id,
         siteId: site.id,
         projectId: project.id,
       },
@@ -261,9 +259,9 @@ async function main() {
       token,
       body: {
         type: 'issue',
+        status: 'active',
         itemId: item.id,
         quantity: 4,
-        fromLocationId: mainStore.id,
         siteId: site.id,
         projectId: project.id,
       },
@@ -275,40 +273,18 @@ async function main() {
     assert.equal(stock.data.items[0].issued, 4);
     assert.equal(stock.data.counts.items >= 1, true);
 
-    const low = expectStatus(await call(base, 'GET', '/inventory/stock/low', { token }), 200, 'low stock');
-    assert.equal(low.data.some((row) => row.sku === item.sku), true);
-
-    const vehicle = expectStatus(await call(base, 'POST', '/vehicles', {
+    expectStatus(await call(base, 'POST', '/vehicles', {
       token,
       body: { registrationNumber: 'UP32AB1234', type: 'tipper', fuelType: 'diesel' },
-    }), 201, 'vehicle').data;
+    }), 201, 'vehicle');
 
-    expectStatus(await call(base, 'POST', `/vehicles/${vehicle.id}/assign`, {
+    expectStatus(await call(base, 'POST', '/vehicles/maintenance-categories/create', {
       token,
-      body: { siteId: site.id, driverId: employee.id },
-    }), 201, 'assign vehicle');
-
-    const blockedMaintenance = await call(base, 'POST', `/vehicles/${vehicle.id}/maintenance`, {
-      token,
-      body: { type: 'service', description: 'Engine service', cost: 2000 },
-    });
-    assert.equal(blockedMaintenance.status, 409);
-
-    expectStatus(await call(base, 'POST', `/vehicles/${vehicle.id}/release`, { token, body: {} }), 200, 'release');
-    expectStatus(await call(base, 'POST', `/vehicles/${vehicle.id}/fuel-logs`, {
-      token,
-      body: {
-        liters: 40,
-        amount: 3600,
-        siteId: site.id,
-        recordExpense: true,
-        payeeName: 'HP Pump',
-        paymentModeNote: 'upi',
-      },
-    }), 201, 'fuel');
+      body: { name: 'Engine service' },
+    }), 201, 'maintenance category');
 
     const summary = expectStatus(await call(base, 'GET', `/projects/${project.id}/summary`, { token }), 200, 'summary').data;
-    assert.equal(summary.accounts.expenseTotal, 4400);
+    assert.equal(summary.accounts.expenseTotal, 800);
     assert.equal(summary.accounts.salaryAmountPaid, 32000);
     assert.equal(summary.accounts.clientAmount, 1500000);
     assert.equal(summary.vehiclesAssigned, 0);

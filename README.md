@@ -13,11 +13,11 @@ Books are kept in INR.
 | Auth | Register and login. The password is hashed before it is stored. The first account is open; later accounts can be created only by an admin. |
 | Departments | Teams such as execution, stores, or accounts. |
 | Projects | Client, dates, budget, and status. |
-| Sites | Sites under a project. Creating a site also creates its store. |
+| Sites | Sites under a project. |
 | Employees | Person, department, agreed salary, and current site assignments. |
 | Attendance | Daily attendance for every employee, including a site register and monthly totals. |
-| Inventory | Items, stores, on-hand balances, and an append-only stock ledger. |
-| Vehicles | Fleet, site assignment, maintenance, fuel, and document expiry. |
+| Inventory | Items, on-hand balances, and an append-only stock ledger. |
+| Vehicles | Fleet, site, employee, maintenance, and document expiry. |
 | Accounts | Monthly salary sheets, employee advances/extras/reimbursements, and other expenses. |
 | Dashboard | Counts plus this month's recorded outflow. |
 
@@ -81,7 +81,7 @@ Send the token as `Authorization: Bearer <token>`. Sample calls are in `examples
 }
 ```
 
-List endpoints accept `page`, `limit` (max 100), `search`, and `sort` (`name` or `-createdAt`). Unknown sort fields are rejected. Delete APIs permanently remove the record from the database. `includeArchived=true` and `POST /:id/restore` still apply to records that were archived before this change.
+List endpoints accept `page`, `limit` (max 100), `search`, and `sort` (`name` or `-createdAt`). Unknown sort fields are rejected. Delete APIs permanently remove the record from the database.
 
 ## Salary and expenses
 
@@ -115,13 +115,11 @@ One employee has one attendance mark per calendar day. Marking the same employee
 
 ## Stock
 
-Movement types are `receipt`, `issue`, `transfer`, `adjustment`, and `return`. Quantity is always positive. The source balance cannot go below zero. Movements are not deleted. Correct a mistake with an adjustment. On a standalone MongoDB server the update is atomic per balance; a replica set makes a transfer atomic end to end.
-
-`GET /api/v1/inventory/stock/low` lists active items whose total on-hand quantity is at or below `reorderLevel`.
+Items store `units`: `nos`, `bag`, `kg`, `ton`, `cum`, `sqm`, `rmt`, `liter`, `box`, `bundle`, or `set`. Movement types are `receipt`, `issue`, `adjustment`, and `return`. Movement `status` is `active` or `inactive`. Quantity is always positive. On-hand stock is the sum of movements per item and cannot go below zero. `GET /api/v1/inventory/stock` returns remaining quantity per item; `counts.low` is how many have 0 left. `GET /api/v1/inventory/stock?below=10` lists only items at or below that remaining quantity.
 
 ## Vehicles
 
-A vehicle is `available`, `assigned`, `maintenance`, or `inactive`. Assign it to one active site. Release it before maintenance. Fuel and maintenance logs can also write an account expense when `recordExpense` is true. Leave that false if you will enter the expense yourself, so the cost is not recorded twice.
+A vehicle is `available`, `maintenance`, or `inactive`. Set `site` and `employee` on the vehicle with create or update.
 
 `GET /api/v1/vehicles/alerts?withinDays=30` lists insurance, fitness, permit, and pollution dates inside the window.
 
@@ -130,12 +128,12 @@ A vehicle is `available`, `assigned`, `maintenance`, or `inactive`. Assign it to
 ```text
 src/
   app.js                 Express app
-  server.js              Database, main store, shutdown
+  server.js              Database, shutdown
   config/                Environment, constants, MongoDB
   common/                Errors, validation, repositories, middleware
   modules/<name>/        Model, validation, service, controller, routes
   routes/index.js        Mount modules here
-  seed/                  Owner account and main store
+  seed/                  Stored file sync
 ```
 
 A new module follows the department module: schema, Zod request schema, service, thin controller, router, then one line in `src/routes/index.js`. Reuse `buildController`, `BaseRepository`, `validate`, and `AppError`.

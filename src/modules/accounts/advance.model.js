@@ -6,7 +6,7 @@ const advanceSchema = new mongoose.Schema(
   {
     code: { type: String, required: true, unique: true, uppercase: true, trim: true },
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', required: true, index: true },
-    department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true, index: true },
+    // department: { type: mongoose.Schema.Types.ObjectId, ref: 'Department', required: true, index: true },
     monthlySalary: { type: Number, required: true, min: 0 },
     requestDate: { type: Date, required: true, index: true },
     advanceAmount: { type: Number, required: true, min: 0 },

@@ -1,7 +1,6 @@
 const {
   VEHICLE_STATUS,
   FUEL_TYPES,
-  MAINTENANCE_TYPES,
   PAYMENT_MODE_NOTES,
   DOCUMENT_EXPIRY_FIELDS,
 } = require('../../config/constants');
@@ -9,7 +8,6 @@ const {
   z,
   objectId,
   money,
-  quantity,
   requestSchema,
   idParams,
   listQuery,
@@ -38,74 +36,38 @@ const vehicleFields = {
 const createBody = z.object({
   ...vehicleFields,
   siteId: objectId.optional(),
+  employeeId: objectId.optional(),
   driverId: objectId.optional(),
-  assignedAt: dateValue.optional(),
-  remarks: optionalText(300),
-}).superRefine((data, ctx) => {
-  if (!data.siteId && (data.driverId || data.assignedAt || data.remarks)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['siteId'],
-      message: 'Choose a site to assign this vehicle',
-    });
-  }
 });
 
 const updateBody = z.object(vehicleFields).partial().extend({
   registrationNumber: shortText(20).optional(),
   status: z.enum(['available', 'inactive']).optional(),
+  siteId: objectId.nullable().optional(),
+  employeeId: objectId.nullable().optional(),
 });
 
-const assignBody = z.object({
-  siteId: objectId,
-  driverId: objectId.optional(),
-  assignedAt: dateValue.optional(),
-  remarks: optionalText(300),
-});
-
-const releaseBody = z.object({
-  releasedAt: dateValue.optional(),
-  remarks: optionalText(300),
-});
+const photoPath = z.string().trim().min(1).max(500);
 
 const maintenanceBody = z.object({
-  loggedAt: dateValue.optional(),
-  type: z.enum(MAINTENANCE_TYPES),
+  category: objectId,
   description: z.string().trim().min(3).max(500),
-  cost: money,
-  odometer: z.number().finite().min(0).optional(),
-  vendorName: optionalText(120),
-  nextDueDate: dateValue.optional(),
-  recordExpense: z.boolean().optional(),
-  payeeName: shortText(120).optional(),
-  paymentModeNote: z.enum(PAYMENT_MODE_NOTES).optional(),
+  singleImage: photoPath.nullable().optional(),
+  paidTo: shortText(120),
+  amountType: z.enum(PAYMENT_MODE_NOTES),
+  amount: money,
+  date: dateValue.optional(),
+  referenceNo: optionalText(80),
 });
 
 const completeBody = z.object({
   completedAt: dateValue.optional(),
-  completionNote: optionalText(500),
-});
-
-const fuelBody = z.object({
-  loggedAt: dateValue.optional(),
-  liters: quantity,
-  amount: money.refine((value) => value > 0, { message: 'Amount must be greater than zero' }),
-  odometer: z.number().finite().min(0).optional(),
-  siteId: objectId.optional(),
-  remarks: optionalText(300),
-  recordExpense: z.boolean().optional(),
-  payeeName: shortText(120).optional(),
-  paymentModeNote: z.enum(PAYMENT_MODE_NOTES).optional(),
+  singleImage: photoPath.nullable().optional(),
 });
 
 const maintenanceParams = z.object({
   id: objectId,
   maintenanceId: objectId,
-});
-
-const fuelLogParams = z.object({
-  id: objectId,
-  fuelLogId: objectId,
 });
 
 module.exports = {
@@ -114,6 +76,7 @@ module.exports = {
       status: z.enum(VEHICLE_STATUS).optional(),
       type: shortText(40).optional(),
       siteId: objectId.optional(),
+      employeeId: objectId.optional(),
     }),
   }),
   create: requestSchema({ body: createBody }),
@@ -124,13 +87,9 @@ module.exports = {
       withinDays: z.coerce.number().int().min(1).max(365).default(30),
     }),
   }),
-  assign: requestSchema({ params: idParams, body: assignBody }),
-  release: requestSchema({ params: idParams, body: releaseBody }),
   maintenance: requestSchema({ params: idParams, body: maintenanceBody }),
   complete: requestSchema({ params: maintenanceParams, body: completeBody }),
   deleteMaintenance: requestSchema({ params: maintenanceParams }),
-  fuel: requestSchema({ params: idParams, body: fuelBody }),
-  deleteFuel: requestSchema({ params: fuelLogParams }),
   pagedChild: requestSchema({
     params: idParams,
     query: listQuery(),

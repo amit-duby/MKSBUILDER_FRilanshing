@@ -1,10 +1,12 @@
+const mongoose = require('mongoose');
+const { COLLECTIONS } = require('../../config/constants');
 const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const requireDoc = require('../../common/utils/requireDoc');
 const { nextCode } = require('../../common/utils/sequence');
+const { removeStoredImage } = require('../../common/utils/compressImage');
 const {
   assignDefined,
-  archivedFilter,
   containsRegex,
   parseSort,
 } = require('../../common/utils/helpers');
@@ -22,12 +24,12 @@ const POPULATE = [
 
 async function getActive(id) {
   const doc = await Employee.findById(id).populate(POPULATE);
-  if (!doc || doc.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
   return doc;
 }
 
 async function assertDepartment(departmentId) {
-  const department = await requireDoc(Department, departmentId, 'Department', { isDeleted: false });
+  const department = await requireDoc(Department, departmentId, 'Department');
   if (!department.isActive) {
     throw new AppError('Department is inactive', 400, 'BAD_REQUEST');
   }
@@ -76,7 +78,7 @@ async function assignToSite(employee, siteId, startDate, remarks) {
     throw new AppError('Only active employees can be assigned to a site', 400, 'BAD_REQUEST');
   }
 
-  const site = await requireDoc(Site, siteId, 'Site', { isDeleted: false });
+  const site = await requireDoc(Site, siteId, 'Site');
   if (site.status !== 'active') {
     throw new AppError('Employees can only be assigned to an active site', 400, 'BAD_REQUEST');
   }
@@ -161,14 +163,10 @@ async function create(body) {
 }
 
 async function list(query) {
-  const filter = { ...archivedFilter(query) };
-  if (query.departmentId) filter.department = query.departmentId;
+  const filter = {};
+  if (query.departmentId) filter.department = new mongoose.Types.ObjectId(query.departmentId);
   if (query.status) filter.status = query.status;
   if (query.employmentType) filter.employmentType = query.employmentType;
-  if (query.siteId) {
-    const ids = await Assignment.find({ site: query.siteId, isCurrent: true }).distinct('employee');
-    filter._id = { $in: ids };
-  }
   if (query.search) {
     const pattern = containsRegex(query.search);
     filter.$or = [
@@ -180,13 +178,88 @@ async function list(query) {
     ];
   }
 
-  return repo.paginate({
-    filter,
-    page: query.page,
-    limit: query.limit,
-    sort: parseSort(query.sort, SORT_FIELDS),
-    populate: POPULATE,
-  });
+  const page = Number(query.page) || 1;
+  const limit = Number(query.limit) || 20;
+  const skip = (page - 1) * limit;
+  const sort = parseSort(query.sort, SORT_FIELDS);
+  const pipeline = [{ $match: filter }];
+
+  if (query.siteId) {
+    const siteId = new mongoose.Types.ObjectId(query.siteId);
+    pipeline.push(
+      {
+        $lookup: {
+          from: COLLECTIONS.employeeAssignments,
+          let: { employeeId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$employee', '$$employeeId'] },
+                    { $eq: ['$site', siteId] },
+                    { $eq: ['$isCurrent', true] },
+                  ],
+                },
+              },
+            },
+            { $limit: 1 },
+            { $project: { _id: 1 } },
+          ],
+          as: '_assigned',
+        },
+      },
+      { $match: { '_assigned.0': { $exists: true } } }
+    );
+  }
+
+  pipeline.push(
+    { $sort: sort },
+    {
+      $facet: {
+        items: [
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $lookup: {
+              from: COLLECTIONS.departments,
+              localField: 'department',
+              foreignField: '_id',
+              pipeline: [{ $project: { name: 1, code: 1, isActive: 1 } }],
+              as: 'department',
+            },
+          },
+          { $unwind: { path: '$department', preserveNullAndEmptyArrays: true } },
+          {
+            $lookup: {
+              from: COLLECTIONS.sites,
+              localField: 'site',
+              foreignField: '_id',
+              pipeline: [{ $project: { name: 1, code: 1, status: 1, project: 1 } }],
+              as: 'site',
+            },
+          },
+          { $unwind: { path: '$site', preserveNullAndEmptyArrays: true } },
+          { $project: { _assigned: 0 } },
+        ],
+        total: [{ $count: 'count' }],
+      },
+    }
+  );
+
+  const [result] = await Employee.aggregate(pipeline).option({ maxTimeMS: 4000 });
+  const items = result && result.items ? result.items : [];
+  const total = result && result.total && result.total[0] ? result.total[0].count : 0;
+
+  return {
+    items,
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: total === 0 ? 1 : Math.ceil(total / limit),
+    },
+  };
 }
 
 async function currentAssignments(employeeId) {
@@ -202,9 +275,36 @@ async function getById(id) {
   return json;
 }
 
+const MAX_ID_PHOTOS = 2;
+
+function capIdPhotos(photos) {
+  const list = Array.isArray(photos) ? photos.filter(Boolean) : [];
+  if (list.length <= MAX_ID_PHOTOS) return list;
+  list.slice(MAX_ID_PHOTOS).forEach((photo) => removeStoredImage(photo, 'employees'));
+  return list.slice(0, MAX_ID_PHOTOS);
+}
+
+function replaceIdPhotos(existing, incoming) {
+  const current = capIdPhotos(existing);
+  const nextPhotos = incoming.filter(Boolean).slice(0, MAX_ID_PHOTOS);
+  if (!nextPhotos.length) return current;
+
+  const next = [...current];
+  for (let index = 0; index < nextPhotos.length; index += 1) {
+    const photo = nextPhotos[index];
+    if (index < next.length) {
+      if (next[index] !== photo) removeStoredImage(next[index], 'employees');
+      next[index] = photo;
+      continue;
+    }
+    next.push(photo);
+  }
+  return capIdPhotos(next);
+}
+
 async function update(id, body) {
   const doc = await Employee.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
 
   if (body.departmentId) {
     await assertDepartment(body.departmentId);
@@ -221,7 +321,7 @@ async function update(id, body) {
     doc.relievingDate = body.relievingDate || undefined;
   }
   if (Object.prototype.hasOwnProperty.call(body, 'siteId')) {
-    if (body.siteId) await requireDoc(Site, body.siteId, 'Site', { isDeleted: false });
+    if (body.siteId) await requireDoc(Site, body.siteId, 'Site');
     doc.site = body.siteId || null;
   }
   if (Object.prototype.hasOwnProperty.call(body, 'idNumber')) {
@@ -234,7 +334,15 @@ async function update(id, body) {
     doc.ifscCode = body.ifscCode || '';
   }
   if (Object.prototype.hasOwnProperty.call(body, 'profilePhoto')) {
+    if (body.profilePhoto && doc.profilePhoto && body.profilePhoto !== doc.profilePhoto) {
+      removeStoredImage(doc.profilePhoto, 'employees');
+    }
     doc.profilePhoto = body.profilePhoto || null;
+  }
+  if (Array.isArray(body.idPhotos)) {
+    doc.idPhotos = replaceIdPhotos(doc.idPhotos, body.idPhotos);
+  } else {
+    doc.idPhotos = capIdPhotos(doc.idPhotos);
   }
 
   assignDefined(doc, body, [
@@ -242,7 +350,6 @@ async function update(id, body) {
     'address',
     'designation',
     'idType',
-    'idPhotos',
     'bankName',
     'employmentType',
     'status',
@@ -274,20 +381,9 @@ async function remove(id) {
   await doc.deleteOne();
 }
 
-async function restore(id) {
-  const doc = await Employee.findById(id);
-  if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
-  if (!doc.isDeleted) throw new AppError('Employee is already active', 400, 'BAD_REQUEST');
-  await assertDepartment(doc.department);
-  doc.isDeleted = false;
-  if (doc.status !== 'resigned') doc.status = 'active';
-  await doc.save();
-  return getById(doc.id);
-}
-
 async function assign(employeeId, body) {
   const employee = await Employee.findById(employeeId);
-  if (!employee || employee.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  if (!employee) throw new AppError('Employee not found', 404, 'NOT_FOUND');
   const assigned = await assignToSite(employee, body.siteId, body.startDate, body.remarks);
   return presentAssignment(assigned.assignment, assigned.site);
 }
@@ -323,7 +419,6 @@ module.exports = {
   getById,
   update,
   remove,
-  restore,
   assign,
   release,
   listAssignments,

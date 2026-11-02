@@ -6,7 +6,6 @@ const { nextCode } = require('../../common/utils/sequence');
 const { roundMoney } = require('../../common/utils/money');
 const {
   assignDefined,
-  archivedFilter,
   containsRegex,
   parseSort,
 } = require('../../common/utils/helpers');
@@ -14,7 +13,7 @@ const Project = require('./project.model');
 const Site = require('../sites/site.model');
 const Expense = require('../accounts/expense.model');
 const SalaryRecord = require('../accounts/salary.model');
-const VehicleAssignment = require('../vehicles/assignment.model');
+const Vehicle = require('../vehicles/vehicle.model');
 
 const repo = new BaseRepository(Project);
 const SORT_FIELDS = ['name', 'code', 'startDate', 'createdAt', 'status'];
@@ -51,7 +50,7 @@ function withClientPending(doc) {
 
 async function getActive(id) {
   const doc = await repo.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Project not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Project not found', 404, 'NOT_FOUND');
   return doc;
 }
 
@@ -89,7 +88,7 @@ async function create(body) {
 }
 
 async function list(query) {
-  const filter = { ...archivedFilter(query) };
+  const filter = {};
   if (query.status) filter.status = query.status;
   if (query.search) {
     const pattern = containsRegex(query.search);
@@ -137,7 +136,7 @@ async function update(id, body) {
   const completing = body.status === 'completed';
   const [doc, activeSite] = await Promise.all([
     getActive(id),
-    completing ? Site.exists({ project: id, isDeleted: false, status: 'active' }) : null,
+    completing ? Site.exists({ project: id, status: 'active' }) : null,
   ]);
 
   if (completing && activeSite) {
@@ -160,7 +159,7 @@ async function update(id, body) {
 async function remove(id) {
   const [doc, activeSite] = await Promise.all([
     repo.findById(id),
-    Site.exists({ project: id, isDeleted: false, status: 'active' }),
+    Site.exists({ project: id, status: 'active' }),
   ]);
   if (!doc) throw new AppError('Project not found', 404, 'NOT_FOUND');
   if (activeSite) {
@@ -169,20 +168,10 @@ async function remove(id) {
   await doc.deleteOne();
 }
 
-async function restore(id) {
-  const doc = await repo.findById(id);
-  if (!doc) throw new AppError('Project not found', 404, 'NOT_FOUND');
-  if (!doc.isDeleted) throw new AppError('Project is already active', 400, 'BAD_REQUEST');
-  doc.isDeleted = false;
-  if (doc.status === 'cancelled') doc.status = 'planning';
-  await doc.save();
-  return withClientPending(doc);
-}
-
 async function summaryStats(projectId) {
   const [siteFacet, expenseRows, salaryRows, vehicles] = await Promise.all([
     Site.aggregate([
-      { $match: { project: projectId, isDeleted: false } },
+      { $match: { project: projectId } },
       {
         $facet: {
           byStatus: [{ $group: { _id: '$status', count: { $sum: 1 } } }],
@@ -228,7 +217,7 @@ async function summaryStats(projectId) {
         },
       },
     ]),
-    VehicleAssignment.countDocuments({ project: projectId, releasedAt: null }),
+    Site.distinct('_id', { project: projectId }).then((ids) => Vehicle.countDocuments({ site: { $in: ids } })),
   ]);
 
   const facet = siteFacet[0] || { byStatus: [], employees: [] };
@@ -286,4 +275,4 @@ async function summary(id) {
   };
 }
 
-module.exports = { create, list, getById, update, remove, restore, summary };
+module.exports = { create, list, getById, update, remove, summary };

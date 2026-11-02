@@ -199,7 +199,7 @@ Content-Type: application/json
 GET {{baseUrl}}/accounts/employees/EMPLOYEE_ID/statement?from=2026-04-01&to=2026-04-30
 Authorization: Bearer {{token}}
 
-### Receive cement into the main store
+### Receive cement
 POST {{baseUrl}}/inventory/movements
 Authorization: Bearer {{token}}
 Content-Type: application/json
@@ -208,8 +208,11 @@ Content-Type: application/json
   "type": "receipt",
   "itemId": "ITEM_ID",
   "quantity": 100,
-  "toLocationId": "MAIN_STORE_ID",
   "unitCost": 380,
+  "vendorName": "Sharma Traders",
+  "condition": "new",
+  "billNo": "INV-1024",
+  "paymentMode": "cash",
   "reference": "GRN-14",
   "remarks": "Received from Sharma Traders"
 }

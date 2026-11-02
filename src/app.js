@@ -1,4 +1,3 @@
-const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -16,6 +15,7 @@ const swaggerUi = require('swagger-ui-express');
 const apiRoutes = require('./routes');
 const passwordPages = require('./modules/auth/auth.pages');
 const openapi = require('./docs/openapi');
+const { serveUploads } = require('./common/middleware/serveUploads');
 
 function redactToken(url = '') {
   const hidden = url.replace(/\/password\/reset\/[a-f0-9]{32,}/i, '/password/reset/redacted');
@@ -35,7 +35,9 @@ const app = express();
 app.disable('x-powered-by');
 if (config.trustProxy) app.set('trust proxy', 1);
 
-const apiHelmet = helmet();
+const apiHelmet = helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+});
 const docsHelmet = helmet({
   contentSecurityPolicy: {
     directives: {
@@ -85,12 +87,8 @@ app.get('/', (_req, res) => {
   });
 });
 
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
-  maxAge: '7d',
-  setHeaders(res) {
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
-  },
-}));
+app.use('/uploads', serveUploads);
+app.use('/api/v1/uploads', serveUploads);
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapi, {
   customSiteTitle: 'MKS Construction ERP API',
   customCss: `
