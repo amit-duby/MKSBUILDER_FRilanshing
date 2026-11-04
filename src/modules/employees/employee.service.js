@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const { COLLECTIONS } = require('../../config/constants');
+const { COLLECTIONS, ASSIGNMENT_STATUS } = require('../../config/constants');
+const [ASSIGNMENT_ASSIGNED, ASSIGNMENT_NOT_ASSIGNED] = ASSIGNMENT_STATUS;
 const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const requireDoc = require('../../common/utils/requireDoc');
@@ -19,7 +20,6 @@ const repo = new BaseRepository(Employee);
 const SORT_FIELDS = ['fullName', 'code', 'joiningDate', 'createdAt', 'designation'];
 const POPULATE = [
   { path: 'department', select: 'name code isActive' },
-  { path: 'site', select: 'name code status project' },
 ];
 
 async function getActive(id) {
@@ -64,6 +64,12 @@ function presentAssignment(assignment, site) {
     project: site.project,
   };
   return json;
+}
+
+function assignmentStatusOf(assignments) {
+  return Array.isArray(assignments) && assignments.length
+    ? ASSIGNMENT_ASSIGNED
+    : ASSIGNMENT_NOT_ASSIGNED;
 }
 
 async function closeCurrentAssignments(employeeId, endDate) {
@@ -129,7 +135,6 @@ async function create(body) {
     idNumber: body.idNumber || null,
     profilePhoto: body.profilePhoto || null,
     idPhotos: body.idPhotos || [],
-    site: body.siteId || null,
     bankName: body.bankName || '',
     accountNumber: body.accountNumber || '',
     ifscCode: body.ifscCode || '',
@@ -159,6 +164,7 @@ async function create(body) {
   const json = employee.toJSON();
   json.department = presentDepartment(department);
   json.currentAssignments = currentAssignments;
+  json.assignmentStatus = assignmentStatusOf(currentAssignments);
   return json;
 }
 
@@ -183,33 +189,35 @@ async function list(query) {
   const skip = (page - 1) * limit;
   const sort = parseSort(query.sort, SORT_FIELDS);
   const pipeline = [{ $match: filter }];
+  const siteId = query.siteId ? new mongoose.Types.ObjectId(query.siteId) : null;
 
-  if (query.siteId) {
-    const siteId = new mongoose.Types.ObjectId(query.siteId);
+  if (siteId && query.assignmentStatus === ASSIGNMENT_NOT_ASSIGNED) {
+    pipeline.push({ $match: { _id: { $exists: false } } });
+  } else if (siteId || query.assignmentStatus) {
+    const assignmentMatch = [
+      { $eq: ['$employee', '$$employeeId'] },
+      { $eq: ['$isCurrent', true] },
+    ];
+    if (siteId) assignmentMatch.push({ $eq: ['$site', siteId] });
+
     pipeline.push(
       {
         $lookup: {
           from: COLLECTIONS.employeeAssignments,
           let: { employeeId: '$_id' },
           pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $eq: ['$employee', '$$employeeId'] },
-                    { $eq: ['$site', siteId] },
-                    { $eq: ['$isCurrent', true] },
-                  ],
-                },
-              },
-            },
+            { $match: { $expr: { $and: assignmentMatch } } },
             { $limit: 1 },
             { $project: { _id: 1 } },
           ],
           as: '_assigned',
         },
       },
-      { $match: { '_assigned.0': { $exists: true } } }
+      {
+        $match: query.assignmentStatus === ASSIGNMENT_NOT_ASSIGNED
+          ? { '_assigned.0': { $exists: false } }
+          : { '_assigned.0': { $exists: true } },
+      }
     );
   }
 
@@ -232,14 +240,36 @@ async function list(query) {
           { $unwind: { path: '$department', preserveNullAndEmptyArrays: true } },
           {
             $lookup: {
-              from: COLLECTIONS.sites,
-              localField: 'site',
-              foreignField: '_id',
-              pipeline: [{ $project: { name: 1, code: 1, status: 1, project: 1 } }],
-              as: 'site',
+              from: COLLECTIONS.employeeAssignments,
+              let: { employeeId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$employee', '$$employeeId'] },
+                        { $eq: ['$isCurrent', true] },
+                      ],
+                    },
+                  },
+                },
+                { $limit: 1 },
+                { $project: { _id: 1 } },
+              ],
+              as: '_assigned',
             },
           },
-          { $unwind: { path: '$site', preserveNullAndEmptyArrays: true } },
+          {
+            $addFields: {
+              assignmentStatus: {
+                $cond: [
+                  { $gt: [{ $size: '$_assigned' }, 0] },
+                  ASSIGNMENT_ASSIGNED,
+                  ASSIGNMENT_NOT_ASSIGNED,
+                ],
+              },
+            },
+          },
           { $project: { _assigned: 0 } },
         ],
         total: [{ $count: 'count' }],
@@ -272,6 +302,7 @@ async function getById(id) {
   const doc = await getActive(id);
   const json = doc.toJSON();
   json.currentAssignments = await currentAssignments(doc._id);
+  json.assignmentStatus = assignmentStatusOf(json.currentAssignments);
   return json;
 }
 
@@ -319,10 +350,6 @@ async function update(id, body) {
   }
   if (Object.prototype.hasOwnProperty.call(body, 'relievingDate')) {
     doc.relievingDate = body.relievingDate || undefined;
-  }
-  if (Object.prototype.hasOwnProperty.call(body, 'siteId')) {
-    if (body.siteId) await requireDoc(Site, body.siteId, 'Site');
-    doc.site = body.siteId || null;
   }
   if (Object.prototype.hasOwnProperty.call(body, 'idNumber')) {
     doc.idNumber = body.idNumber || null;
@@ -384,13 +411,38 @@ async function remove(id) {
 async function assign(employeeId, body) {
   const employee = await Employee.findById(employeeId);
   if (!employee) throw new AppError('Employee not found', 404, 'NOT_FOUND');
-  const assigned = await assignToSite(employee, body.siteId, body.startDate, body.remarks);
+  const assigned = await assignToSite(
+    employee,
+    body.siteId,
+    body.startDate,
+    body.remarks
+  );
   return presentAssignment(assigned.assignment, assigned.site);
 }
 
-async function release(employeeId, assignmentId, body) {
-  const assignment = await Assignment.findOne({ _id: assignmentId, employee: employeeId });
-  if (!assignment) throw new AppError('Assignment not found', 404, 'NOT_FOUND');
+async function findEmployeeAssignment(employeeId, assignmentOrSiteId) {
+  const assignment = await Assignment.findOne({
+    _id: assignmentOrSiteId,
+    employee: employeeId,
+  });
+  if (assignment) return assignment;
+
+  return Assignment.findOne({
+    employee: employeeId,
+    site: assignmentOrSiteId,
+    isCurrent: true,
+  });
+}
+
+async function release(employeeId, assignmentId, body = {}) {
+  const assignment = await findEmployeeAssignment(employeeId, assignmentId);
+  if (!assignment) {
+    throw new AppError(
+      'Assignment not found for this employee. Use the assignment id from GET /employees/:id/assignments (data[].id) or the current site id',
+      404,
+      'NOT_FOUND'
+    );
+  }
   if (!assignment.isCurrent) throw new AppError('Assignment is already closed', 400, 'BAD_REQUEST');
 
   const endDate = body.endDate || new Date();

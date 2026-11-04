@@ -3,6 +3,7 @@ const {
   SITE_STATUS,
   EMPLOYMENT_TYPES,
   EMPLOYEE_STATUS,
+  ASSIGNMENT_STATUS,
   PAY_BASIS,
   ATTENDANCE_STATUS,
   SALARY_RECORD_STATUS,
@@ -80,8 +81,10 @@ const bankAccountNumber = {
   example: '123456789012',
 };
 
-function pathParam(name = 'id') {
-  return { name, in: 'path', required: true, schema: objectId };
+function pathParam(name = 'id', description) {
+  const param = { name, in: 'path', required: true, schema: objectId };
+  if (description) param.description = description;
+  return param;
 }
 
 function query(name, schema, description) {
@@ -338,7 +341,7 @@ const schemas = {
       relievingDate: dateValue,
       salary: { $ref: '#/components/schemas/EmployeeSalary' },
       notes: { type: 'string', maxLength: 1000 },
-      siteId: objectId,
+      siteId: { ...objectId, description: 'Optional. Creates a site assignment; it is not stored on the employee.' },
       idType: { type: 'string', maxLength: 40, example: 'Aadhaar' },
       idNumber: { type: 'string', maxLength: 40, example: '123412341234' },
       profilePhoto: {
@@ -790,7 +793,13 @@ const spec = {
     },
     '/employees': {
       get: operation('Employees', 'List employees', {
-        parameters: [...paging, query('departmentId', objectId), query('siteId', objectId), query('status', { type: 'string' })],
+        parameters: [
+          ...paging,
+          query('departmentId', objectId),
+          query('siteId', objectId),
+          query('status', { type: 'string', enum: EMPLOYEE_STATUS }),
+          query('assignmentStatus', { type: 'string', enum: ASSIGNMENT_STATUS }, 'assigned if the employee currently has a site, not_assigned if they do not'),
+        ],
       }),
     },
     '/employees/create': {
@@ -889,9 +898,18 @@ const spec = {
         body: jsonBody({ siteId: '64b0c0c0c0c0c0c0c0c0c0c0', startDate: '2026-04-14', remarks: '' }, 'EmployeeAssign'),
       }),
     },
+    '/employees/{id}/assignments/release': {
+      post: operation('Employees', 'Release an employee from a site by site id', {
+        parameters: [pathParam()],
+        body: jsonBody({ siteId: '64b0c0c0c0c0c0c0c0c0c0c0', endDate: '2026-04-20' }),
+      }),
+    },
     '/employees/{id}/assignments/{assignmentId}/release': {
       post: operation('Employees', 'Release an employee from a site', {
-        parameters: [pathParam(), pathParam('assignmentId')],
+        parameters: [
+          pathParam(),
+          pathParam('assignmentId', 'Assignment id from GET /employees/{id}/assignments (data[].id), or the current site id'),
+        ],
         body: jsonBody({ endDate: '2026-04-20' }),
       }),
     },

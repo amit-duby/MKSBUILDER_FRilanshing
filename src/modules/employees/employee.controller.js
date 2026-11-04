@@ -38,6 +38,11 @@ const release = asyncHandler(async (req, res) => {
   return ok(res, data, 'Site assignment closed');
 });
 
+const releaseBySite = asyncHandler(async (req, res) => {
+  const data = await service.release(req.params.id, req.body.siteId, req.body);
+  return ok(res, data, 'Site assignment closed');
+});
+
 const listAssignments = asyncHandler(async (req, res) => {
   const data = await service.listAssignments(req.params.id, req.query);
   return ok(res, data, 'Assignments fetched');
@@ -51,5 +56,6 @@ module.exports = {
   remove,
   assign,
   release,
+  releaseBySite,
   listAssignments,
 };

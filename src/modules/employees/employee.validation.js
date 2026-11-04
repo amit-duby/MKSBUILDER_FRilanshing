@@ -1,4 +1,4 @@
-const { EMPLOYMENT_TYPES, EMPLOYEE_STATUS, PAY_BASIS } = require('../../config/constants');
+const { EMPLOYMENT_TYPES, EMPLOYEE_STATUS, ASSIGNMENT_STATUS, PAY_BASIS } = require('../../config/constants');
 const {
   z,
   objectId,
@@ -101,7 +101,6 @@ const updateBody = z.object({
     allowances: z.array(amountLine).max(20).optional(),
   }).optional(),
   notes: optionalText(1000),
-  siteId: objectId.nullable().optional(),
   idType: optionalText(40),
   idNumber: optionalText(40).nullable(),
   profilePhoto: photoPath.nullable().optional(),
@@ -121,6 +120,11 @@ const releaseBody = z.object({
   endDate: dateValue.optional(),
 });
 
+const releaseBySiteBody = z.object({
+  siteId: objectId,
+  endDate: dateValue.optional(),
+});
+
 const assignmentParams = z.object({
   id: objectId,
   assignmentId: objectId,
@@ -132,6 +136,7 @@ module.exports = {
       departmentId: objectId.optional(),
       siteId: objectId.optional(),
       status: z.enum(EMPLOYEE_STATUS).optional(),
+      assignmentStatus: z.enum(ASSIGNMENT_STATUS).optional(),
       employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
     }),
   }),
@@ -140,6 +145,7 @@ module.exports = {
   byId: requestSchema({ params: idParams }),
   assign: requestSchema({ params: idParams, body: assignBody }),
   release: requestSchema({ params: assignmentParams, body: releaseBody }),
+  releaseBySite: requestSchema({ params: idParams, body: releaseBySiteBody }),
   assignments: requestSchema({
     params: idParams,
     query: z.object({

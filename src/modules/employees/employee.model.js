@@ -40,12 +40,6 @@ const employeeSchema = new mongoose.Schema(
         message: 'At most 2 ID photos',
       },
     },
-    site: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Site',
-      default: null,
-      index: true,
-    },
     bankName: { type: String, trim: true, maxlength: 120, default: '' },
     accountNumber: { type: String, trim: true, maxlength: 20, default: '' },
     ifscCode: { type: String, trim: true, uppercase: true, maxlength: 11, default: '' },

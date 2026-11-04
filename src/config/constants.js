@@ -4,6 +4,7 @@ const PROJECT_STATUS = ['planning', 'active', 'on_hold', 'completed', 'cancelled
 const SITE_STATUS = ['active', 'inactive', 'completed', 'On_hold'];
 const EMPLOYMENT_TYPES = ['permanent', 'contract', 'daily_wage', 'staff'];
 const EMPLOYEE_STATUS = ['active', 'inactive', 'resigned'];
+const ASSIGNMENT_STATUS = ['assigned', 'not_assigned'];
 const PAY_BASIS = ['monthly', 'daily'];
 const ATTENDANCE_STATUS = ['present', 'absent', 'half_day', 'leave', 'weekly_off', 'holiday'];
 const SALARY_RECORD_STATUS = ['draft', 'recorded'];
@@ -72,6 +73,7 @@ module.exports = {
   SITE_STATUS,
   EMPLOYMENT_TYPES,
   EMPLOYEE_STATUS,
+  ASSIGNMENT_STATUS,
   PAY_BASIS,
   ATTENDANCE_STATUS,
   SALARY_RECORD_STATUS,

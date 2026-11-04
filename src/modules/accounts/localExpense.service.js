@@ -12,7 +12,7 @@ const Assignment = require('../employees/assignment.model');
 
 const SORT_FIELDS = ['date', 'cashGiven', 'returnAmount', 'code', 'createdAt'];
 const POPULATE = [
-  { path: 'employee', select: 'fullName code designation site' },
+  { path: 'employee', select: 'fullName code designation' },
   { path: 'site', select: 'name code' },
 ];
 
@@ -66,10 +66,6 @@ async function present(id) {
 }
 
 async function relatedSite(employee) {
-  if (employee.site) {
-    const site = await Site.findById(employee.site);
-    if (site) return site;
-  }
   const assignment = await Assignment.findOne({ employee: employee._id, isCurrent: true })
     .sort({ startDate: -1 })
     .populate('site');

@@ -4,6 +4,8 @@ const { COLLECTIONS } = require('../config/constants');
 
 const STALE_INDEXES = {
   [COLLECTIONS.inventoryItems]: ['sku_1', 'category_1', 'isDeleted_1'],
+  [COLLECTIONS.employees]: ['site_1'],
+  [COLLECTIONS.employeeAssignments]: ['assign_1', 'reassign_1'],
 };
 
 async function dropStaleIndexes() {
