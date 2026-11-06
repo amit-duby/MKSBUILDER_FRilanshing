@@ -101,7 +101,14 @@ app.use('/uploads', (req, res, next) => {
 }));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapi, {
   customSiteTitle: 'MKS Construction ERP API',
-  swaggerOptions: { persistAuthorization: true },
+  swaggerOptions: {
+    persistAuthorization: true,
+    docExpansion: 'list',
+    defaultModelsExpandDepth: 5,
+    defaultModelExpandDepth: 5,
+    displayRequestDuration: true,
+    tryItOutEnabled: true,
+  },
 }));
 app.get('/api/docs.json', (_req, res) => {
   res.json(openapi);

@@ -66,6 +66,94 @@ function schemaObject(properties, required = []) {
   };
 }
 
+function modelSchema(properties) {
+  return {
+    type: 'object',
+    properties,
+  };
+}
+
+function namedRef(name) {
+  return { $ref: `#/components/schemas/${name}` };
+}
+
+function resolveSchema(schema, schemasMap) {
+  if (!schema) return schema;
+  if (schema.$ref) {
+    const name = schema.$ref.split('/').pop();
+    return resolveSchema(schemasMap[name], schemasMap);
+  }
+  if (schema.type === 'array' && schema.items) {
+    return { ...schema, items: resolveSchema(schema.items, schemasMap) };
+  }
+  if (schema.properties) {
+    const properties = {};
+    for (const [key, value] of Object.entries(schema.properties)) {
+      properties[key] = resolveSchema(value, schemasMap);
+    }
+    return { ...schema, properties };
+  }
+  return schema;
+}
+
+function buildExample(schema, schemasMap) {
+  const resolved = resolveSchema(schema, schemasMap);
+  if (!resolved) return undefined;
+  if (resolved.type === 'array') {
+    return [buildExample(resolved.items, schemasMap)];
+  }
+  if (resolved.type === 'object' || resolved.properties) {
+    const out = {};
+    for (const [key, prop] of Object.entries(resolved.properties || {})) {
+      if (!prop || prop.format === 'binary') continue;
+      if (Object.prototype.hasOwnProperty.call(prop, 'example')) {
+        out[key] = prop.example;
+        continue;
+      }
+      if (prop.enum && prop.enum.length) {
+        out[key] = prop.enum[0];
+        continue;
+      }
+      if (prop.type === 'boolean') {
+        out[key] = true;
+        continue;
+      }
+      if (prop.type === 'integer' || prop.type === 'number') {
+        out[key] = prop.minimum == null ? 0 : prop.minimum;
+        continue;
+      }
+      if (prop.type === 'array') {
+        out[key] = prop.items ? [buildExample(prop.items, schemasMap)] : [];
+        continue;
+      }
+      if (prop.type === 'object' || prop.properties || prop.$ref) {
+        out[key] = buildExample(prop, schemasMap);
+        continue;
+      }
+      if (prop.format === 'date') {
+        out[key] = '2026-04-14';
+        continue;
+      }
+      if (prop.format === 'date-time') {
+        out[key] = '2026-04-14T09:00:00.000Z';
+        continue;
+      }
+      if (prop.format === 'email') {
+        out[key] = 'owner@mksbuilder.local';
+        continue;
+      }
+      if (prop.nullable) {
+        out[key] = null;
+        continue;
+      }
+      out[key] = '';
+    }
+    return out;
+  }
+  if (Object.prototype.hasOwnProperty.call(resolved, 'example')) return resolved.example;
+  return null;
+}
+
 function jsonBody(schema, example) {
   return {
     required: true,
@@ -102,13 +190,38 @@ function bothBodies(jsonSchema, jsonExample, formSchema) {
   };
 }
 
+function envelopeSchema(dataSchema, list = false) {
+  return {
+    type: 'object',
+    properties: {
+      success: { type: 'boolean', example: true },
+      message: { type: 'string', example: 'OK' },
+      data: list
+        ? { type: 'array', items: dataSchema || {} }
+        : (dataSchema || {}),
+      meta: {
+        type: 'object',
+        properties: {
+          page: { type: 'integer', example: 1 },
+          limit: { type: 'integer', example: 20 },
+          total: { type: 'integer', example: 1 },
+          totalPages: { type: 'integer', example: 1 },
+        },
+      },
+    },
+  };
+}
+
 function operation(tag, summary, options = {}) {
+  const dataSchema = options.data
+    ? (typeof options.data === 'string' ? namedRef(options.data) : options.data)
+    : undefined;
   const responses = {
     [options.status || '200']: {
       description: 'Envelope: success, message, data, optional meta',
       content: {
         'application/json': {
-          schema: { $ref: '#/components/schemas/ApiEnvelope' },
+          schema: envelopeSchema(dataSchema, Boolean(options.list)),
         },
       },
     },
@@ -732,9 +845,431 @@ const schemas = {
     },
     ['reason']
   ),
+
+  // Response / model schemas for frontend
+  NamedRef: modelSchema({
+    id: objectId,
+    name: { type: 'string' },
+    code: { type: 'string' },
+  }),
+  Department: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'DEP-0001' },
+    name: { type: 'string', example: 'Civil' },
+    description: { type: 'string' },
+    isActive: { type: 'boolean', example: true },
+    activeEmployeeCount: { type: 'integer', example: 4 },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Project: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'PRJ-0001' },
+    name: { type: 'string', example: 'Riverfront' },
+    clientName: { type: 'string' },
+    clientPhone: { type: 'string' },
+    description: { type: 'string' },
+    status: { type: 'string', enum: PROJECT_STATUS },
+    startDate: dateString,
+    expectedEndDate: { ...dateString, nullable: true },
+    actualEndDate: { ...dateString, nullable: true },
+    budgetAmount: money,
+    clientAmount: money,
+    clientPendingAmount: money,
+    moneySpent: money,
+    currency: { type: 'string', example: 'INR' },
+    address: { type: 'string' },
+    city: { type: 'string' },
+    state: { type: 'string' },
+    pincode: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Site: modelSchema({
+    id: objectId,
+    project: namedRef('NamedRef'),
+    code: { type: 'string', example: 'STE-0001' },
+    name: { type: 'string', example: 'Tower A' },
+    address: { type: 'string' },
+    status: { type: 'string', enum: SITE_STATUS },
+    incharge: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        id: objectId,
+        fullName: { type: 'string' },
+        code: { type: 'string' },
+        designation: { type: 'string' },
+        status: { type: 'string' },
+      },
+    },
+    startDate: dateString,
+    expectedEndDate: { ...dateString, nullable: true },
+    notes: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Employee: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'EMP-0001' },
+    fullName: { type: 'string', example: 'Ravi Kumar' },
+    phone: { type: 'string', nullable: true },
+    email: { type: 'string', format: 'email', nullable: true },
+    address: { type: 'string' },
+    department: {
+      type: 'object',
+      properties: {
+        id: objectId,
+        name: { type: 'string' },
+        code: { type: 'string' },
+        isActive: { type: 'boolean' },
+      },
+    },
+    designation: { type: 'string' },
+    idType: { type: 'string' },
+    idNumber: { type: 'string', nullable: true },
+    profilePhoto: { type: 'string', nullable: true, example: 'http://localhost:4000/uploads/employees/photo.png' },
+    idPhotos: { type: 'array', items: { type: 'string' } },
+    bankName: { type: 'string' },
+    accountNumber: { type: 'string' },
+    ifscCode: { type: 'string' },
+    employmentType: { type: 'string', enum: EMPLOYMENT_TYPES },
+    status: { type: 'string', enum: EMPLOYEE_STATUS },
+    joiningDate: dateString,
+    relievingDate: { ...dateString, nullable: true },
+    salary: namedRef('EmployeeSalary'),
+    notes: { type: 'string' },
+    currentAssignments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: objectId,
+          site: namedRef('NamedRef'),
+          project: namedRef('NamedRef'),
+          startDate: dateString,
+          endDate: { ...dateString, nullable: true },
+        },
+      },
+    },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Vehicle: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'VEH-0001' },
+    registrationNumber: { type: 'string', example: 'UP32 AB 2002' },
+    type: { type: 'string', example: 'Tipper' },
+    make: { type: 'string' },
+    modelName: { type: 'string' },
+    year: { type: 'integer' },
+    fuelType: { type: 'string', enum: FUEL_TYPES },
+    status: { type: 'string', enum: VEHICLE_STATUS },
+    currentAssignment: { type: 'object', nullable: true },
+    odometer: { type: 'number' },
+    documents: vehicleDocuments,
+    notes: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  VehicleAssignment: modelSchema({
+    id: objectId,
+    vehicle: {
+      type: 'object',
+      properties: {
+        id: objectId,
+        code: { type: 'string' },
+        registrationNumber: { type: 'string' },
+        type: { type: 'string' },
+        make: { type: 'string' },
+        modelName: { type: 'string' },
+        status: { type: 'string', enum: VEHICLE_STATUS },
+      },
+    },
+    site: {
+      type: 'object',
+      properties: {
+        id: objectId,
+        name: { type: 'string' },
+        code: { type: 'string' },
+        status: { type: 'string' },
+      },
+    },
+    driver: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        id: objectId,
+        fullName: { type: 'string' },
+        code: { type: 'string' },
+        designation: { type: 'string' },
+      },
+    },
+    assignedAt: dateTimeString,
+    releasedAt: { ...dateTimeString, nullable: true },
+    remarks: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  MaintenanceCategory: modelSchema({
+    id: objectId,
+    name: { type: 'string' },
+    description: { type: 'string' },
+    status: { type: 'string', enum: MAINTENANCE_CATEGORY_STATUS },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Maintenance: modelSchema({
+    id: objectId,
+    vehicle: {
+      type: 'object',
+      properties: {
+        id: objectId,
+        code: { type: 'string' },
+        registrationNumber: { type: 'string' },
+        type: { type: 'string' },
+        make: { type: 'string' },
+        modelName: { type: 'string' },
+        status: { type: 'string' },
+      },
+    },
+    maintenanceCategory: namedRef('MaintenanceCategory'),
+    paidTo: { type: 'string' },
+    date: dateString,
+    amount: money,
+    modeOfPayment: { type: 'string', enum: PAYMENT_MODE_NOTES },
+    reference: { type: 'string' },
+    uploadReceipt: { type: 'string', nullable: true },
+    description: { type: 'string' },
+    nextDueDate: { ...dateString, nullable: true },
+    completedAt: { ...dateTimeString, nullable: true },
+    completionNote: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  FuelLog: modelSchema({
+    id: objectId,
+    vehicle: objectId,
+    loggedAt: dateTimeString,
+    liters: quantity,
+    amount: money,
+    odometer: { type: 'number' },
+    site: namedRef('NamedRef'),
+    remarks: { type: 'string' },
+    expense: { ...objectId, nullable: true },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  InventoryItem: modelSchema({
+    id: objectId,
+    code: { type: 'string' },
+    sku: { type: 'string' },
+    name: { type: 'string' },
+    category: { type: 'string' },
+    unit: { type: 'string', enum: UNITS },
+    reorderLevel: { type: 'number' },
+    description: { type: 'string' },
+    isActive: { type: 'boolean' },
+    onHand: { type: 'number' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  StockLocation: modelSchema({
+    id: objectId,
+    code: { type: 'string' },
+    name: { type: 'string' },
+    type: { type: 'string', enum: STOCK_LOCATION_TYPES },
+    site: namedRef('NamedRef'),
+    isSystem: { type: 'boolean' },
+    isActive: { type: 'boolean' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  StockMovement: modelSchema({
+    id: objectId,
+    code: { type: 'string' },
+    type: { type: 'string', enum: MOVEMENT_TYPES },
+    item: { type: 'object' },
+    quantity: quantity,
+    fromLocation: { type: 'object', nullable: true },
+    toLocation: { type: 'object', nullable: true },
+    project: namedRef('NamedRef'),
+    site: namedRef('NamedRef'),
+    employee: { type: 'object', nullable: true },
+    vendorName: { type: 'string' },
+    condition: { type: 'string', enum: MATERIAL_CONDITIONS },
+    billNo: { type: 'string' },
+    challanNo: { type: 'string' },
+    paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES },
+    movementDate: dateString,
+    remarks: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Expense: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'EXP-0001' },
+    category: { type: 'string', enum: EXPENSE_CATEGORIES },
+    amount: money,
+    expenseDate: dateString,
+    description: { type: 'string' },
+    payeeName: { type: 'string' },
+    employee: { type: 'object', nullable: true },
+    project: namedRef('NamedRef'),
+    site: namedRef('NamedRef'),
+    vehicle: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        id: objectId,
+        registrationNumber: { type: 'string' },
+        code: { type: 'string' },
+      },
+    },
+    item: { type: 'object', nullable: true },
+    referenceNo: { type: 'string' },
+    paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
+    isVoid: { type: 'boolean' },
+    voidReason: { type: 'string' },
+    voidedAt: { ...dateTimeString, nullable: true },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  SalaryRecord: modelSchema({
+    id: objectId,
+    code: { type: 'string' },
+    employee: { type: 'object' },
+    project: namedRef('NamedRef'),
+    site: namedRef('NamedRef'),
+    periodMonth: { type: 'integer' },
+    periodYear: { type: 'integer' },
+    payBasis: { type: 'string', enum: PAY_BASIS },
+    baseAmount: money,
+    allowances: { type: 'array', items: amountLine },
+    deductions: { type: 'array', items: amountLine },
+    extras: { type: 'array', items: amountLine },
+    grossAmount: money,
+    totalDeductions: money,
+    totalExtras: money,
+    netAmount: money,
+    amountPaid: money,
+    balanceAmount: { type: 'number' },
+    outstandingAmount: money,
+    overpaidAmount: money,
+    recordStatus: { type: 'string', enum: SALARY_RECORD_STATUS },
+    remarks: { type: 'string' },
+    isVoid: { type: 'boolean' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  AuthUser: modelSchema({
+    id: objectId,
+    name: { type: 'string' },
+    email: { type: 'string', format: 'email' },
+    role: { type: 'string', example: 'admin' },
+    avatar: { type: 'string', nullable: true },
+  }),
+  AuthSession: modelSchema({
+    token: { type: 'string' },
+    user: namedRef('AuthUser'),
+  }),
+  Attendance: modelSchema({
+    id: objectId,
+    employee: { type: 'object' },
+    project: namedRef('NamedRef'),
+    site: namedRef('NamedRef'),
+    attendanceDate: dateString,
+    status: { type: 'string', enum: ATTENDANCE_STATUS },
+    checkIn: { type: 'string', nullable: true },
+    checkOut: { type: 'string', nullable: true },
+    overtimeHours: { type: 'number' },
+    remarks: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Advance: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'ADV-0001' },
+    employee: {
+      type: 'object',
+      properties: {
+        id: objectId,
+        fullName: { type: 'string' },
+        code: { type: 'string' },
+        designation: { type: 'string' },
+      },
+    },
+    department: namedRef('NamedRef'),
+    monthlySalary: money,
+    requestDate: dateString,
+    advanceAmount: money,
+    recoveredAmount: money,
+    pendingAmount: money,
+    reasonForAdvance: { type: 'string' },
+    attachment: { type: 'string', nullable: true },
+    employeeRemarks: { type: 'string' },
+    recoveries: {
+      type: 'array',
+      items: schemaObject({
+        amount: money,
+        recoveredAt: dateTimeString,
+        remarks: { type: 'string' },
+      }),
+    },
+    isVoid: { type: 'boolean' },
+    voidReason: { type: 'string' },
+    voidedAt: { ...dateTimeString, nullable: true },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  EmployeeAssignment: modelSchema({
+    id: objectId,
+    employee: objectId,
+    site: namedRef('NamedRef'),
+    project: namedRef('NamedRef'),
+    startDate: dateString,
+    endDate: { ...dateString, nullable: true },
+    remarks: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
 };
 
-const ref = (name) => ({ $ref: `#/components/schemas/${name}` });
+const ref = (name) => namedRef(name);
+
+function finalizeSpec(document) {
+  const schemasMap = document.components.schemas;
+  for (const pathItem of Object.values(document.paths || {})) {
+    for (const op of Object.values(pathItem || {})) {
+      if (!op || typeof op !== 'object') continue;
+
+      if (op.requestBody && op.requestBody.content) {
+        for (const media of Object.values(op.requestBody.content)) {
+          if (!media || !media.schema) continue;
+          media.schema = resolveSchema(media.schema, schemasMap);
+          if (!media.example) {
+            media.example = buildExample(media.schema, schemasMap);
+          } else {
+            media.example = {
+              ...buildExample(media.schema, schemasMap),
+              ...media.example,
+            };
+          }
+        }
+      }
+
+      for (const response of Object.values(op.responses || {})) {
+        const appJson = response && response.content && response.content['application/json'];
+        if (!appJson || !appJson.schema) continue;
+        appJson.schema = resolveSchema(appJson.schema, schemasMap);
+        if (!appJson.example) {
+          appJson.example = buildExample(appJson.schema, schemasMap);
+        }
+      }
+    }
+  }
+  return document;
+}
 
 const spec = {
   openapi: '3.0.3',
@@ -772,6 +1307,7 @@ const spec = {
       post: operation('Auth', 'Register an admin', {
         auth: false,
         status: '201',
+        data: 'AuthSession',
         body: jsonBody(ref('RegisterBody'), {
           name: 'Owner',
           email: 'owner@mksbuilder.local',
@@ -782,6 +1318,7 @@ const spec = {
     '/auth/login': {
       post: operation('Auth', 'Log in', {
         auth: false,
+        data: 'AuthSession',
         body: jsonBody(ref('LoginBody'), {
           email: 'owner@mksbuilder.local',
           password: 'ChangeMe123!',
@@ -828,11 +1365,12 @@ const spec = {
       get: operation('Dashboard', 'Owner overview'),
     },
     '/departments': {
-      get: operation('Departments', 'List departments', { parameters: paging }),
+      get: operation('Departments', 'List departments', { parameters: paging, data: 'Department', list: true }),
     },
     '/departments/create': {
       post: operation('Departments', 'Create a department', {
         status: '201',
+        data: 'Department',
         body: jsonBody(ref('DepartmentCreate'), {
           name: 'Civil',
           description: 'Site civil works',
@@ -841,11 +1379,12 @@ const spec = {
       }),
     },
     '/departments/get-by-id/{id}': {
-      get: operation('Departments', 'Get a department', { parameters: [pathParam()] }),
+      get: operation('Departments', 'Get a department', { parameters: [pathParam()], data: 'Department' }),
     },
     '/departments/update/{id}': {
       patch: operation('Departments', 'Update a department', {
         parameters: [pathParam()],
+        data: 'Department',
         body: jsonBody(ref('DepartmentUpdate'), { name: 'Civil', isActive: true }),
       }),
     },
@@ -855,11 +1394,14 @@ const spec = {
     '/projects': {
       get: operation('Projects', 'List projects', {
         parameters: [...paging, query('status', { type: 'string', enum: PROJECT_STATUS })],
+        data: 'Project',
+        list: true,
       }),
     },
     '/projects/create': {
       post: operation('Projects', 'Create a project', {
         status: '201',
+        data: 'Project',
         body: jsonBody(ref('ProjectCreate'), {
           name: 'Riverfront',
           clientName: 'City Authority',
@@ -876,11 +1418,12 @@ const spec = {
       get: operation('Projects', 'Project cost summary', { parameters: [pathParam()] }),
     },
     '/projects/{id}': {
-      get: operation('Projects', 'Get a project', { parameters: [pathParam()] }),
+      get: operation('Projects', 'Get a project', { parameters: [pathParam()], data: 'Project' }),
     },
     '/projects/update/{id}': {
       patch: operation('Projects', 'Update a project', {
         parameters: [pathParam()],
+        data: 'Project',
         body: jsonBody(ref('ProjectUpdate'), { moneySpent: 850000, clientAmount: 2000000 }),
       }),
     },
@@ -890,11 +1433,14 @@ const spec = {
     '/sites': {
       get: operation('Sites', 'List sites', {
         parameters: [...paging, query('projectId', objectId), query('status', { type: 'string', enum: SITE_STATUS })],
+        data: 'Site',
+        list: true,
       }),
     },
     '/sites/create': {
       post: operation('Sites', 'Create a site', {
         status: '201',
+        data: 'Site',
         body: jsonBody(ref('SiteCreate'), {
           projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
           name: 'Tower A',
@@ -905,11 +1451,12 @@ const spec = {
       }),
     },
     '/sites/{id}': {
-      get: operation('Sites', 'Get a site', { parameters: [pathParam()] }),
+      get: operation('Sites', 'Get a site', { parameters: [pathParam()], data: 'Site' }),
     },
     '/sites/update/{id}': {
       patch: operation('Sites', 'Update a site', {
         parameters: [pathParam()],
+        data: 'Site',
         body: jsonBody(ref('SiteUpdate'), { name: 'Tower A', status: 'active' }),
       }),
     },
@@ -925,11 +1472,14 @@ const spec = {
           query('status', { type: 'string', enum: EMPLOYEE_STATUS }),
           query('employmentType', { type: 'string', enum: EMPLOYMENT_TYPES }),
         ],
+        data: 'Employee',
+        list: true,
       }),
     },
     '/employees/create': {
       post: operation('Employees', 'Create an employee', {
         status: '201',
+        data: 'Employee',
         body: bothBodies(
           ref('EmployeeCreate'),
           {
@@ -951,12 +1501,13 @@ const spec = {
       }),
     },
     '/employees/{id}': {
-      get: operation('Employees', 'Get an employee', { parameters: [pathParam()] }),
+      get: operation('Employees', 'Get an employee', { parameters: [pathParam()], data: 'Employee' }),
       delete: operation('Employees', 'Delete an employee', { parameters: [pathParam()] }),
     },
     '/employees/update/{id}': {
       patch: operation('Employees', 'Update an employee', {
         parameters: [pathParam()],
+        data: 'Employee',
         body: bothBodies(
           ref('EmployeeUpdate'),
           { designation: 'Senior mason', phone: '9876543210' },
@@ -965,9 +1516,14 @@ const spec = {
       }),
     },
     '/employees/{id}/assignments': {
-      get: operation('Employees', 'List site assignments', { parameters: [pathParam()] }),
+      get: operation('Employees', 'List site assignments', {
+        parameters: [pathParam()],
+        data: 'EmployeeAssignment',
+        list: true,
+      }),
       post: operation('Employees', 'Assign an employee to a site', {
         parameters: [pathParam()],
+        data: 'EmployeeAssignment',
         body: jsonBody(ref('EmployeeAssign'), {
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           startDate: '2026-04-14',
@@ -977,6 +1533,7 @@ const spec = {
     '/employees/{id}/assignments/{assignmentId}/release': {
       post: operation('Employees', 'Release an employee from a site', {
         parameters: [pathParam(), pathParam('assignmentId')],
+        data: 'EmployeeAssignment',
         body: jsonBody(ref('EmployeeRelease'), { endDate: '2026-04-20' }),
       }),
     },
@@ -987,6 +1544,8 @@ const spec = {
           query('departmentId', objectId),
           query('siteId', objectId),
         ],
+        data: 'Attendance',
+        list: true,
       }),
     },
     '/attendance/summary': {
@@ -1008,9 +1567,12 @@ const spec = {
           query('employeeId', objectId),
           query('status', { type: 'string', enum: ATTENDANCE_STATUS }),
         ],
+        data: 'Attendance',
+        list: true,
       }),
       post: operation('Attendance', 'Mark attendance', {
         status: '201',
+        data: 'Attendance',
         body: jsonBody(ref('AttendanceMark'), {
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
           date: '2026-04-14',
@@ -1023,6 +1585,8 @@ const spec = {
     },
     '/attendance/bulk': {
       post: operation('Attendance', 'Mark attendance for up to 200 employees', {
+        data: 'Attendance',
+        list: true,
         body: jsonBody(ref('AttendanceBulk'), {
           date: '2026-04-14',
           entries: [
@@ -1037,9 +1601,10 @@ const spec = {
       }),
     },
     '/attendance/{id}': {
-      get: operation('Attendance', 'Get one attendance record', { parameters: [pathParam()] }),
+      get: operation('Attendance', 'Get one attendance record', { parameters: [pathParam()], data: 'Attendance' }),
       patch: operation('Attendance', 'Update attendance', {
         parameters: [pathParam()],
+        data: 'Attendance',
         body: jsonBody(ref('AttendanceUpdate'), {
           status: 'half_day',
           checkOut: '13:00',
@@ -1049,9 +1614,10 @@ const spec = {
       delete: operation('Attendance', 'Delete an attendance record', { parameters: [pathParam()] }),
     },
     '/inventory/items': {
-      get: operation('Inventory', 'List items', { parameters: paging }),
+      get: operation('Inventory', 'List items', { parameters: paging, data: 'InventoryItem', list: true }),
       post: operation('Inventory', 'Create an item', {
         status: '201',
+        data: 'InventoryItem',
         body: jsonBody(ref('ItemCreate'), {
           name: 'Cement OPC 53',
           category: 'Material',
@@ -1061,17 +1627,19 @@ const spec = {
       }),
     },
     '/inventory/items/{id}': {
-      get: operation('Inventory', 'Get an item', { parameters: [pathParam()] }),
+      get: operation('Inventory', 'Get an item', { parameters: [pathParam()], data: 'InventoryItem' }),
       patch: operation('Inventory', 'Update an item', {
         parameters: [pathParam()],
+        data: 'InventoryItem',
         body: jsonBody(ref('ItemUpdate'), { reorderLevel: 40 }),
       }),
       delete: operation('Inventory', 'Delete an item', { parameters: [pathParam()] }),
     },
     '/inventory/locations': {
-      get: operation('Inventory', 'List stock locations', { parameters: paging }),
+      get: operation('Inventory', 'List stock locations', { parameters: paging, data: 'StockLocation', list: true }),
       post: operation('Inventory', 'Create a stock location', {
         status: '201',
+        data: 'StockLocation',
         body: jsonBody(ref('LocationCreate'), {
           name: 'Main store',
           type: 'central_store',
@@ -1079,9 +1647,10 @@ const spec = {
       }),
     },
     '/inventory/locations/{id}': {
-      get: operation('Inventory', 'Get a stock location', { parameters: [pathParam()] }),
+      get: operation('Inventory', 'Get a stock location', { parameters: [pathParam()], data: 'StockLocation' }),
       patch: operation('Inventory', 'Update a stock location', {
         parameters: [pathParam()],
+        data: 'StockLocation',
         body: jsonBody(ref('LocationUpdate'), { name: 'Main store', isActive: true }),
       }),
       delete: operation('Inventory', 'Delete a stock location', { parameters: [pathParam()] }),
@@ -1092,7 +1661,7 @@ const spec = {
       }),
     },
     '/inventory/stock/low': {
-      get: operation('Inventory', 'Items at or below reorder level'),
+      get: operation('Inventory', 'Items at or below reorder level', { data: 'InventoryItem', list: true }),
     },
     '/inventory/movements': {
       get: operation('Inventory', 'List inward stock movements (receipts, returns, transfers, adjustments)', {
@@ -1107,9 +1676,12 @@ const spec = {
           query('from', dateString),
           query('to', dateString),
         ],
+        data: 'StockMovement',
+        list: true,
       }),
       post: operation('Inventory', 'Record a stock movement', {
         status: '201',
+        data: 'StockMovement',
         body: jsonBody(ref('MovementCreate'), {
           type: 'issue',
           itemId: '64b0c0c0c0c0c0c0c0c0c0c0',
@@ -1121,9 +1693,10 @@ const spec = {
       }),
     },
     '/inventory/movements/{id}': {
-      get: operation('Inventory', 'Get a stock movement', { parameters: [pathParam()] }),
+      get: operation('Inventory', 'Get a stock movement', { parameters: [pathParam()], data: 'StockMovement' }),
       patch: operation('Inventory', 'Update a stock movement and recalculate remaining stock', {
         parameters: [pathParam()],
+        data: 'StockMovement',
         body: jsonBody(ref('MovementUpdate'), {
           quantity: 80,
           vendorName: 'Ultratech Cement',
@@ -1145,12 +1718,15 @@ const spec = {
           query('from', dateString),
           query('to', dateString),
         ],
+        data: 'StockMovement',
+        list: true,
       }),
     },
     '/inventory/issues/{id}': {
-      get: operation('Inventory', 'Get a stock issue', { parameters: [pathParam()] }),
+      get: operation('Inventory', 'Get a stock issue', { parameters: [pathParam()], data: 'StockMovement' }),
       patch: operation('Inventory', 'Update an issue and recalculate remaining stock', {
         parameters: [pathParam()],
+        data: 'StockMovement',
         body: jsonBody(ref('MovementUpdate'), {
           quantity: 4,
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
@@ -1166,9 +1742,12 @@ const spec = {
           query('type', { type: 'string' }),
           query('siteId', objectId),
         ],
+        data: 'Vehicle',
+        list: true,
       }),
       post: operation('Vehicles', 'Create a vehicle, and assign it when siteId is sent', {
         status: '201',
+        data: 'Vehicle',
         body: jsonBody(ref('VehicleCreate'), {
           registrationNumber: 'UP32 AB 2002',
           type: 'Tipper',
@@ -1181,9 +1760,12 @@ const spec = {
     '/vehicles/maintenance-categories': {
       get: operation('Vehicles', 'List maintenance categories', {
         parameters: [...paging, query('status', { type: 'string', enum: MAINTENANCE_CATEGORY_STATUS })],
+        data: 'MaintenanceCategory',
+        list: true,
       }),
       post: operation('Vehicles', 'Create a maintenance category', {
         status: '201',
+        data: 'MaintenanceCategory',
         body: jsonBody(ref('MaintenanceCategoryCreate'), {
           name: 'Engine service',
           description: 'Oil, filter, and engine checks',
@@ -1192,9 +1774,13 @@ const spec = {
       }),
     },
     '/vehicles/maintenance-categories/{id}': {
-      get: operation('Vehicles', 'Get a maintenance category', { parameters: [pathParam()] }),
+      get: operation('Vehicles', 'Get a maintenance category', {
+        parameters: [pathParam()],
+        data: 'MaintenanceCategory',
+      }),
       patch: operation('Vehicles', 'Update a maintenance category', {
         parameters: [pathParam()],
+        data: 'MaintenanceCategory',
         body: jsonBody(ref('MaintenanceCategoryUpdate'), {
           description: 'Full engine service',
           status: 'inactive',
@@ -1205,6 +1791,8 @@ const spec = {
     '/vehicles/alerts': {
       get: operation('Vehicles', 'Vehicles with documents expiring soon', {
         parameters: [query('withinDays', { type: 'integer', default: 30, minimum: 1, maximum: 365 })],
+        data: 'Vehicle',
+        list: true,
       }),
     },
     '/vehicles/assignments': {
@@ -1218,6 +1806,8 @@ const spec = {
           query('from', dateString),
           query('to', dateString),
         ],
+        data: 'VehicleAssignment',
+        list: true,
       }),
     },
     '/vehicles/maintenance': {
@@ -1229,11 +1819,14 @@ const spec = {
           query('from', dateString),
           query('to', dateString),
         ],
+        data: 'Maintenance',
+        list: true,
       }),
     },
     '/vehicles/maintenance/{maintenanceId}': {
       patch: operation('Vehicles', 'Update a maintenance log', {
         parameters: [pathParam('maintenanceId')],
+        data: 'Maintenance',
         body: bothBodies(
           ref('MaintenanceUpdate'),
           {
@@ -1247,9 +1840,10 @@ const spec = {
       }),
     },
     '/vehicles/{id}': {
-      get: operation('Vehicles', 'Get a vehicle', { parameters: [pathParam()] }),
+      get: operation('Vehicles', 'Get a vehicle', { parameters: [pathParam()], data: 'Vehicle' }),
       patch: operation('Vehicles', 'Update a vehicle', {
         parameters: [pathParam()],
+        data: 'Vehicle',
         body: jsonBody(ref('VehicleUpdate'), { notes: 'New tyres fitted' }),
       }),
       delete: operation('Vehicles', 'Delete a vehicle', { parameters: [pathParam()] }),
@@ -1257,6 +1851,7 @@ const spec = {
     '/vehicles/{id}/assign': {
       post: operation('Vehicles', 'Assign an available vehicle', {
         parameters: [pathParam()],
+        data: 'VehicleAssignment',
         body: jsonBody(ref('VehicleAssign'), {
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           assignedAt: '2026-04-14',
@@ -1266,17 +1861,27 @@ const spec = {
     '/vehicles/{id}/release': {
       post: operation('Vehicles', 'Release an assigned vehicle', {
         parameters: [pathParam()],
+        data: 'VehicleAssignment',
         body: jsonBody(ref('VehicleRelease'), { releasedAt: '2026-04-15' }),
       }),
     },
     '/vehicles/{id}/assignments': {
-      get: operation('Vehicles', 'Assignment history', { parameters: [pathParam(), ...paging] }),
+      get: operation('Vehicles', 'Assignment history', {
+        parameters: [pathParam(), ...paging],
+        data: 'VehicleAssignment',
+        list: true,
+      }),
     },
     '/vehicles/{id}/maintenance': {
-      get: operation('Vehicles', 'List maintenance logs', { parameters: [pathParam(), ...paging] }),
+      get: operation('Vehicles', 'List maintenance logs', {
+        parameters: [pathParam(), ...paging],
+        data: 'Maintenance',
+        list: true,
+      }),
       post: operation('Vehicles', 'Add a maintenance log', {
         parameters: [pathParam()],
         status: '201',
+        data: 'Maintenance',
         body: bothBodies(
           ref('MaintenanceCreate'),
           {
@@ -1296,6 +1901,7 @@ const spec = {
     '/vehicles/{id}/maintenance/{maintenanceId}': {
       patch: operation('Vehicles', 'Update a vehicle maintenance log', {
         parameters: [pathParam(), pathParam('maintenanceId')],
+        data: 'Maintenance',
         body: bothBodies(
           ref('MaintenanceUpdate'),
           { paidTo: 'Sharma Motors', amount: 2800, modeOfPayment: 'upi' },
@@ -1306,13 +1912,19 @@ const spec = {
     '/vehicles/{id}/maintenance/{maintenanceId}/complete': {
       post: operation('Vehicles', 'Complete a maintenance log', {
         parameters: [pathParam(), pathParam('maintenanceId')],
+        data: 'Maintenance',
         body: jsonBody(ref('MaintenanceComplete'), { completionNote: 'Done' }),
       }),
     },
     '/vehicles/{id}/fuel-logs': {
-      get: operation('Vehicles', 'List fuel logs', { parameters: [pathParam(), ...paging] }),
+      get: operation('Vehicles', 'List fuel logs', {
+        parameters: [pathParam(), ...paging],
+        data: 'FuelLog',
+        list: true,
+      }),
       post: operation('Vehicles', 'Add a fuel log', {
         parameters: [pathParam()],
+        data: 'FuelLog',
         body: jsonBody(ref('FuelCreate'), {
           liters: 40,
           amount: 3600,
@@ -1330,9 +1942,14 @@ const spec = {
       get: operation('Accounts', 'Employee ledger statement', { parameters: [pathParam('employeeId')] }),
     },
     '/accounts/salaries': {
-      get: operation('Accounts', 'List salary records', { parameters: paging }),
+      get: operation('Accounts', 'List salary records', {
+        parameters: paging,
+        data: 'SalaryRecord',
+        list: true,
+      }),
       post: operation('Accounts', 'Record a salary sheet', {
         status: '201',
+        data: 'SalaryRecord',
         body: jsonBody(ref('SalaryCreate'), {
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
           periodMonth: 4,
@@ -1344,15 +1961,17 @@ const spec = {
       }),
     },
     '/accounts/salaries/{id}': {
-      get: operation('Accounts', 'Get a salary record', { parameters: [pathParam()] }),
+      get: operation('Accounts', 'Get a salary record', { parameters: [pathParam()], data: 'SalaryRecord' }),
       patch: operation('Accounts', 'Update a salary record', {
         parameters: [pathParam()],
+        data: 'SalaryRecord',
         body: jsonBody(ref('SalaryUpdate'), { amountPaid: 20000 }),
       }),
     },
     '/accounts/salaries/{id}/void': {
       post: operation('Accounts', 'Void a salary record', {
         parameters: [pathParam()],
+        data: 'SalaryRecord',
         body: jsonBody(ref('VoidBody'), { reason: 'Entered for the wrong month' }),
       }),
     },
@@ -1368,9 +1987,12 @@ const spec = {
           query('from', dateString),
           query('to', dateString),
         ],
+        data: 'Expense',
+        list: true,
       }),
       post: operation('Accounts', 'Record an expense', {
         status: '201',
+        data: 'Expense',
         body: jsonBody(ref('ExpenseCreate'), {
           category: 'material',
           amount: 38000,
@@ -1380,15 +2002,17 @@ const spec = {
       }),
     },
     '/accounts/expenses/{id}': {
-      get: operation('Accounts', 'Get an expense', { parameters: [pathParam()] }),
+      get: operation('Accounts', 'Get an expense', { parameters: [pathParam()], data: 'Expense' }),
       patch: operation('Accounts', 'Update an expense', {
         parameters: [pathParam()],
+        data: 'Expense',
         body: jsonBody(ref('ExpenseUpdate'), { amount: 40000 }),
       }),
     },
     '/accounts/expenses/{id}/void': {
       post: operation('Accounts', 'Void an expense', {
         parameters: [pathParam()],
+        data: 'Expense',
         body: jsonBody(ref('VoidBody'), { reason: 'Duplicate entry removed' }),
       }),
     },
@@ -1401,9 +2025,12 @@ const spec = {
           query('from', dateString),
           query('to', dateString),
         ],
+        data: 'Advance',
+        list: true,
       }),
       post: operation('Accounts', 'Create an employee advance request', {
         status: '201',
+        data: 'Advance',
         body: jsonBody(ref('AdvanceCreate'), {
           employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
           advanceAmount: 5000,
@@ -1414,9 +2041,10 @@ const spec = {
       }),
     },
     '/accounts/advances/{id}': {
-      get: operation('Accounts', 'Get an advance request', { parameters: [pathParam()] }),
+      get: operation('Accounts', 'Get an advance request', { parameters: [pathParam()], data: 'Advance' }),
       patch: operation('Accounts', 'Update an advance request', {
         parameters: [pathParam()],
+        data: 'Advance',
         body: jsonBody(ref('AdvanceUpdate'), {
           advanceAmount: 7000,
           reasonForAdvance: 'Medical expense',
@@ -1426,6 +2054,7 @@ const spec = {
     '/accounts/advances/{id}/recover': {
       post: operation('Accounts', 'Record an advance recovery', {
         parameters: [pathParam()],
+        data: 'Advance',
         body: jsonBody(ref('AdvanceRecover'), {
           amount: 2000,
           remarks: 'Adjusted in October salary',
@@ -1435,10 +2064,11 @@ const spec = {
     '/accounts/advances/{id}/void': {
       post: operation('Accounts', 'Void an advance request', {
         parameters: [pathParam()],
+        data: 'Advance',
         body: jsonBody(ref('VoidBody'), { reason: 'Entered for the wrong employee' }),
       }),
     },
   },
 };
 
-module.exports = spec;
+module.exports = finalizeSpec(spec);
