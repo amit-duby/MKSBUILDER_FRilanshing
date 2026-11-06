@@ -8,8 +8,7 @@ const items = buildController(inventory.items, {
   listed: 'Items fetched',
   fetched: 'Item fetched',
   updated: 'Item updated',
-  removed: 'Item archived',
-  restored: 'Item restored',
+  removed: 'Item deleted',
 });
 
 const locations = buildController(inventory.locations, {
@@ -17,8 +16,7 @@ const locations = buildController(inventory.locations, {
   listed: 'Stock locations fetched',
   fetched: 'Stock location fetched',
   updated: 'Stock location updated',
-  removed: 'Stock location archived',
-  restored: 'Stock location restored',
+  removed: 'Stock location deleted',
 });
 
 const listStock = asyncHandler(async (req, res) => {

@@ -38,9 +38,9 @@ function getConfig() {
     trustProxy: parsed.data.TRUST_PROXY === 'true',
     resend: parsed.data.RESEND_API_KEY
       ? {
-          apiKey: parsed.data.RESEND_API_KEY,
-          from: parsed.data.MAIL_FROM || 'MKS Construction ERP <onboarding@resend.dev>',
-        }
+        apiKey: parsed.data.RESEND_API_KEY,
+        from: parsed.data.MAIL_FROM || 'MKS Construction ERP <onboarding@resend.dev>',
+      }
       : null,
     corsOrigins: parsed.data.CORS_ORIGIN === '*'
       ? '*'

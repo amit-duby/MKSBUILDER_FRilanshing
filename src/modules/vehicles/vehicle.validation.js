@@ -1,7 +1,6 @@
 const {
   VEHICLE_STATUS,
   FUEL_TYPES,
-  MAINTENANCE_TYPES,
   PAYMENT_MODE_NOTES,
   DOCUMENT_EXPIRY_FIELDS,
 } = require('../../config/constants');
@@ -68,18 +67,51 @@ const releaseBody = z.object({
   remarks: optionalText(300),
 });
 
-const maintenanceBody = z.object({
-  loggedAt: dateValue.optional(),
-  type: z.enum(MAINTENANCE_TYPES),
-  description: z.string().trim().min(3).max(500),
-  cost: money,
-  odometer: z.number().finite().min(0).optional(),
-  vendorName: optionalText(120),
+const maintenanceBody = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const body = { ...value };
+  if (!body.maintenanceCategoryId) {
+    body.maintenanceCategoryId = body.maintenanceCategory || body.categoryId;
+  }
+  return body;
+}, z.object({
+  maintenanceCategoryId: objectId,
+  paidTo: shortText(120),
+  date: dateValue.optional(),
+  amount: money,
+  modeOfPayment: z.enum(PAYMENT_MODE_NOTES),
+  reference: optionalText(80),
+  uploadReceipt: z.string().trim().min(1).max(500).optional(),
+  description: z.string().trim().min(3).max(500).optional(),
   nextDueDate: dateValue.optional(),
   recordExpense: z.boolean().optional(),
   payeeName: shortText(120).optional(),
   paymentModeNote: z.enum(PAYMENT_MODE_NOTES).optional(),
-});
+}));
+
+const updateMaintenanceBody = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const body = { ...value };
+  if (!body.maintenanceCategoryId) {
+    body.maintenanceCategoryId = body.maintenanceCategory || body.categoryId;
+  }
+  return body;
+}, z.object({
+  maintenanceCategoryId: objectId.optional(),
+  paidTo: shortText(120).optional(),
+  date: dateValue.optional(),
+  amount: money.optional(),
+  modeOfPayment: z.enum(PAYMENT_MODE_NOTES).optional(),
+  reference: optionalText(80),
+  uploadReceipt: z.string().trim().min(1).max(500).optional(),
+  description: z.string().trim().min(3).max(500).optional(),
+  nextDueDate: dateValue.nullable().optional(),
+  recordExpense: z.boolean().optional(),
+  payeeName: shortText(120).optional(),
+  paymentModeNote: z.enum(PAYMENT_MODE_NOTES).optional(),
+}).refine((data) => Object.values(data).some((value) => value !== undefined), {
+  message: 'Provide at least one field to update',
+}));
 
 const completeBody = z.object({
   completedAt: dateValue.optional(),
@@ -119,9 +151,34 @@ module.exports = {
       withinDays: z.coerce.number().int().min(1).max(365).default(30),
     }),
   }),
+  listAllAssignments: requestSchema({
+    query: listQuery({
+      vehicleId: objectId.optional(),
+      siteId: objectId.optional(),
+      driverId: objectId.optional(),
+      current: z.enum(['true', 'false']).optional().transform((value) => (
+        value === undefined ? undefined : value === 'true'
+      )),
+      from: dateValue.optional(),
+      to: dateValue.optional(),
+    }),
+  }),
+  listAllMaintenance: requestSchema({
+    query: listQuery({
+      vehicleId: objectId.optional(),
+      maintenanceCategoryId: objectId.optional(),
+      from: dateValue.optional(),
+      to: dateValue.optional(),
+    }),
+  }),
   assign: requestSchema({ params: idParams, body: assignBody }),
   release: requestSchema({ params: idParams, body: releaseBody }),
   maintenance: requestSchema({ params: idParams, body: maintenanceBody }),
+  updateMaintenance: requestSchema({ params: maintenanceParams, body: updateMaintenanceBody }),
+  updateMaintenanceById: requestSchema({
+    params: z.object({ maintenanceId: objectId }),
+    body: updateMaintenanceBody,
+  }),
   complete: requestSchema({ params: maintenanceParams, body: completeBody }),
   fuel: requestSchema({ params: idParams, body: fuelBody }),
   pagedChild: requestSchema({

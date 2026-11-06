@@ -5,16 +5,19 @@ const requireDoc = require('../../common/utils/requireDoc');
 const { nextCode } = require('../../common/utils/sequence');
 const {
   assignDefined,
-  archivedFilter,
   containsRegex,
   parseSort,
   addDays,
+  startOfUtcDay,
+  endOfUtcDay,
 } = require('../../common/utils/helpers');
 const { COLLECTIONS, DOCUMENT_EXPIRY_FIELDS } = require('../../config/constants');
 const Vehicle = require('./vehicle.model');
 const Assignment = require('./assignment.model');
 const Maintenance = require('./maintenance.model');
+const MaintenanceCategory = require('./maintenanceCategory.model');
 const FuelLog = require('./fuel.model');
+const { removeStoredReceipt } = require('../../common/middleware/maintenanceUpload');
 const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
 
@@ -22,9 +25,13 @@ const repo = new BaseRepository(Vehicle);
 const SORT_FIELDS = ['registrationNumber', 'code', 'type', 'status', 'createdAt'];
 const ASSIGNMENT_POPULATE = [
   { path: 'site', select: 'name code status' },
-  { path: 'project', select: 'name code' },
   { path: 'driver', select: 'fullName code designation' },
 ];
+const MAINTENANCE_POPULATE = [
+  { path: 'vehicle', select: 'code registrationNumber type status make modelName' },
+  { path: 'maintenanceCategory', select: 'name description status' },
+];
+const MAINTENANCE_SORT = ['date', 'amount', 'createdAt'];
 
 function publicRef(doc) {
   if (!doc) return null;
@@ -33,9 +40,92 @@ function publicRef(doc) {
   return doc;
 }
 
+function asId(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value.id) return String(value.id);
+  if (value._id) return String(value._id);
+  return String(value);
+}
+
+function presentVehicleBrief(doc) {
+  if (!doc) return null;
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+  const id = asId(json);
+  if (!json.registrationNumber && !json.code) return id ? { id } : null;
+  return {
+    id,
+    code: json.code,
+    registrationNumber: json.registrationNumber,
+    type: json.type,
+    make: json.make || '',
+    modelName: json.modelName || '',
+    status: json.status,
+  };
+}
+
+function presentCategoryBrief(doc) {
+  if (!doc) return null;
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+  const id = asId(json);
+  if (!json.name) return id ? { id } : null;
+  return {
+    id,
+    name: json.name,
+    description: json.description || '',
+    status: json.status,
+  };
+}
+
+function presentMaintenance(doc) {
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
+  const raw = doc._doc || json;
+  const category = json.maintenanceCategory && json.maintenanceCategory.name
+    ? json.maintenanceCategory
+    : json.category || raw.category;
+
+  return {
+    id: json.id,
+    vehicle: presentVehicleBrief(json.vehicle),
+    maintenanceCategory: presentCategoryBrief(category),
+    paidTo: json.paidTo || '',
+    date: json.date,
+    amount: json.amount,
+    modeOfPayment: json.modeOfPayment || raw.amountType || null,
+    reference: json.reference || raw.referenceNo || '',
+    uploadReceipt: json.uploadReceipt || raw.singleImage || null,
+    description: json.description || '',
+    nextDueDate: json.nextDueDate || null,
+    completedAt: json.completedAt || null,
+    completionNote: json.completionNote || '',
+    createdAt: json.createdAt,
+    updatedAt: json.updatedAt,
+  };
+}
+
+async function presentMaintenanceList(items) {
+  const rows = items.map(presentMaintenance);
+  const missing = [...new Set(
+    rows
+      .filter((row) => row.maintenanceCategory && row.maintenanceCategory.id && !row.maintenanceCategory.name)
+      .map((row) => row.maintenanceCategory.id)
+  )];
+  if (!missing.length) return rows;
+
+  const cats = await MaintenanceCategory.find({ _id: { $in: missing } }).select('name description status');
+  const byId = new Map(cats.map((cat) => [cat.id, presentCategoryBrief(cat)]));
+  for (const row of rows) {
+    if (row.maintenanceCategory && !row.maintenanceCategory.name) {
+      const filled = byId.get(row.maintenanceCategory.id);
+      if (filled) row.maintenanceCategory = filled;
+    }
+  }
+  return rows;
+}
+
 async function getMutable(id) {
   const doc = await Vehicle.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
   return doc;
 }
 
@@ -44,7 +134,7 @@ async function present(id) {
     path: 'currentAssignment',
     populate: ASSIGNMENT_POPULATE,
   });
-  if (!doc || doc.isDeleted) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
   return doc;
 }
 
@@ -82,9 +172,9 @@ async function voidExpense(expense) {
 
 async function loadAssignmentTargets(body) {
   const [site, driver] = await Promise.all([
-    requireDoc(Site, body.siteId, 'Site', { isDeleted: false }),
+    requireDoc(Site, body.siteId, 'Site'),
     body.driverId
-      ? requireDoc(Employee, body.driverId, 'Employee', { isDeleted: false })
+      ? requireDoc(Employee, body.driverId, 'Employee')
       : null,
   ]);
   if (site.status !== 'active') {
@@ -106,14 +196,13 @@ function presentCreatedAssignment(assignment, site, driver) {
       code: site.code,
       status: site.status,
     },
-    project: site.project,
     driver: driver
       ? {
-          id: driver.id,
-          fullName: driver.fullName,
-          code: driver.code,
-          designation: driver.designation,
-        }
+        id: driver.id,
+        fullName: driver.fullName,
+        code: driver.code,
+        designation: driver.designation,
+      }
       : null,
     assignedAt: assignment.assignedAt,
     releasedAt: assignment.releasedAt,
@@ -150,7 +239,6 @@ const service = {
       assignment = await Assignment.create({
         vehicle: vehicle._id,
         site: targets.site._id,
-        project: targets.site.project,
         driver: targets.driver && targets.driver._id,
         assignedAt: body.assignedAt || new Date(),
         releasedAt: null,
@@ -173,7 +261,7 @@ const service = {
   },
 
   async list(query) {
-    const filter = { ...archivedFilter(query) };
+    const filter = {};
     if (query.status) filter.status = query.status;
     if (query.type) filter.type = query.type;
     if (query.siteId) {
@@ -195,7 +283,7 @@ const service = {
       page: query.page,
       limit: query.limit,
       sort: parseSort(query.sort, SORT_FIELDS),
-      populate: [{ path: 'currentAssignment', select: 'site project assignedAt releasedAt' }],
+      populate: [{ path: 'currentAssignment', populate: ASSIGNMENT_POPULATE }],
     });
   },
 
@@ -225,28 +313,19 @@ const service = {
   async remove(id) {
     const doc = await getMutable(id);
     if (doc.status === 'assigned' || doc.currentAssignment) {
-      throw new AppError('Release the vehicle before archiving it', 409, 'CONFLICT');
+      throw new AppError('Release the vehicle before deleting it', 409, 'CONFLICT');
     }
-    doc.isDeleted = true;
-    doc.status = 'inactive';
-    await doc.save();
-  },
-
-  async restore(id) {
-    const doc = await Vehicle.findById(id);
-    if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
-    if (!doc.isDeleted) throw new AppError('Vehicle is already active', 400, 'BAD_REQUEST');
-    doc.isDeleted = false;
-    doc.status = 'available';
-    doc.currentAssignment = undefined;
-    await doc.save();
-    return doc;
+    await Promise.all([
+      Assignment.deleteMany({ vehicle: doc._id }),
+      Maintenance.deleteMany({ vehicle: doc._id }),
+      FuelLog.deleteMany({ vehicle: doc._id }),
+    ]);
+    await doc.deleteOne();
   },
 
   async alerts(query) {
     const horizon = addDays(new Date(), query.withinDays);
     const vehicles = await Vehicle.find({
-      isDeleted: false,
       $or: DOCUMENT_EXPIRY_FIELDS.map((field) => ({
         [`documents.${field}`]: { $ne: null, $lte: horizon },
       })),
@@ -272,7 +351,6 @@ const service = {
     const assignment = await Assignment.create({
       vehicle: vehicle._id,
       site: site._id,
-      project: site.project,
       driver: driver && driver._id,
       assignedAt: body.assignedAt || new Date(),
       releasedAt: null,
@@ -311,86 +389,72 @@ const service = {
     return assignment.populate(ASSIGNMENT_POPULATE);
   },
 
-  async listAssignments(id, query) {
-    if (!mongoose.Types.ObjectId.isValid(id)) {
-      throw new AppError('Invalid identifier', 400, 'BAD_REQUEST');
+  async listAllAssignments(query) {
+    const filter = {};
+    if (query.vehicleId) filter.vehicle = query.vehicleId;
+    if (query.siteId) filter.site = query.siteId;
+    if (query.driverId) filter.driver = query.driverId;
+    if (query.current === true || query.current === undefined) {
+      filter.releasedAt = null;
+    } else if (query.current === false) {
+      filter.releasedAt = { $ne: null };
+    }
+    if (query.from || query.to) {
+      filter.assignedAt = {};
+      if (query.from) filter.assignedAt.$gte = startOfUtcDay(query.from);
+      if (query.to) filter.assignedAt.$lte = endOfUtcDay(query.to);
     }
 
-    const vehicleId = new mongoose.Types.ObjectId(id);
-    const page = query.page;
-    const limit = query.limit;
-    const [vehicle, rows] = await Promise.all([
-      Vehicle.exists({ _id: vehicleId, isDeleted: false }),
-      Assignment.aggregate([
-        { $match: { vehicle: vehicleId } },
-        { $sort: { assignedAt: -1 } },
-        {
-          $facet: {
-            items: [
-              { $skip: (page - 1) * limit },
-              { $limit: limit },
-              {
-                $lookup: {
-                  from: COLLECTIONS.sites,
-                  localField: 'site',
-                  foreignField: '_id',
-                  pipeline: [{ $project: { name: 1, code: 1, status: 1 } }],
-                  as: 'site',
-                },
-              },
-              {
-                $lookup: {
-                  from: COLLECTIONS.projects,
-                  localField: 'project',
-                  foreignField: '_id',
-                  pipeline: [{ $project: { name: 1, code: 1 } }],
-                  as: 'project',
-                },
-              },
-              {
-                $lookup: {
-                  from: COLLECTIONS.employees,
-                  localField: 'driver',
-                  foreignField: '_id',
-                  pipeline: [{ $project: { fullName: 1, code: 1, designation: 1 } }],
-                  as: 'driver',
-                },
-              },
-              {
-                $set: {
-                  site: { $first: '$site' },
-                  project: { $first: '$project' },
-                  driver: { $first: '$driver' },
-                },
-              },
-            ],
-            total: [{ $count: 'count' }],
-          },
-        },
-      ]),
-    ]);
+    const result = await new BaseRepository(Assignment).paginate({
+      filter,
+      page: query.page,
+      limit: query.limit,
+      sort: { assignedAt: -1 },
+      populate: [
+        { path: 'vehicle', select: 'code registrationNumber type status make modelName' },
+        ...ASSIGNMENT_POPULATE,
+      ],
+    });
 
-    if (!vehicle) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
+    result.items = result.items.map((doc) => {
+      const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+      return {
+        id: json.id,
+        vehicle: presentVehicleBrief(json.vehicle),
+        site: json.site
+          ? {
+              id: asId(json.site),
+              name: json.site.name,
+              code: json.site.code,
+              status: json.site.status,
+            }
+          : null,
+        driver: json.driver
+          ? {
+              id: asId(json.driver),
+              fullName: json.driver.fullName,
+              code: json.driver.code,
+              designation: json.driver.designation,
+            }
+          : null,
+        assignedAt: json.assignedAt,
+        releasedAt: json.releasedAt || null,
+        remarks: json.remarks || '',
+        createdAt: json.createdAt,
+        updatedAt: json.updatedAt,
+      };
+    });
 
-    const row = rows[0] || { items: [], total: [] };
-    const total = row.total[0] ? row.total[0].count : 0;
-    return {
-      items: row.items.map((doc) => {
-        doc.id = doc._id.toString();
-        delete doc._id;
-        delete doc.__v;
-        doc.site = publicRef(doc.site);
-        doc.project = publicRef(doc.project);
-        doc.driver = publicRef(doc.driver);
-        return doc;
-      }),
-      meta: {
-        page,
-        limit,
-        total,
-        totalPages: total === 0 ? 1 : Math.ceil(total / limit),
-      },
-    };
+    return result;
+  },
+
+  async listAssignments(id, query) {
+    await getMutable(id);
+    return this.listAllAssignments({
+      ...query,
+      vehicleId: id,
+      current: query.current === undefined ? null : query.current,
+    });
   },
 
   async addMaintenance(id, body, user) {
@@ -401,53 +465,152 @@ const service = {
     if (vehicle.status === 'inactive') {
       throw new AppError('Inactive vehicles cannot be sent for maintenance', 400, 'BAD_REQUEST');
     }
-    assertOdometer(vehicle, body.odometer);
-    if (body.recordExpense && !(body.cost > 0)) {
+
+    const category = await requireDoc(
+      MaintenanceCategory,
+      body.maintenanceCategoryId,
+      'Maintenance category'
+    );
+    if (category.status !== 'active') {
+      throw new AppError('Maintenance category is inactive', 400, 'BAD_REQUEST');
+    }
+
+    const amount = body.amount;
+    if (body.recordExpense && !(amount > 0)) {
       throw new AppError('A recorded expense needs an amount greater than zero', 400, 'BAD_REQUEST');
     }
+
+    const date = body.date || new Date();
+    const description = body.description || `${category.name} — ${body.paidTo}`;
 
     let expense;
     if (body.recordExpense) {
       expense = await recordExpense({
         category: 'vehicle',
-        amount: body.cost,
-        expenseDate: body.loggedAt || new Date(),
+        amount,
+        expenseDate: date,
         vehicleId: vehicle.id,
-        payeeName: body.payeeName || body.vendorName || 'Maintenance vendor',
-        description: body.description,
-        paymentModeNote: body.paymentModeNote,
+        payeeName: body.payeeName || body.paidTo || 'Maintenance vendor',
+        description,
+        paymentModeNote: body.paymentModeNote || body.modeOfPayment,
       }, user);
     }
 
     try {
       const log = await Maintenance.create({
         vehicle: vehicle._id,
-        loggedAt: body.loggedAt || new Date(),
-        type: body.type,
-        description: body.description,
-        cost: body.cost,
-        odometer: body.odometer,
-        vendorName: body.vendorName || '',
+        maintenanceCategory: category._id,
+        paidTo: body.paidTo,
+        date,
+        amount,
+        modeOfPayment: body.modeOfPayment,
+        reference: body.reference || '',
+        uploadReceipt: body.uploadReceipt || null,
+        description,
         nextDueDate: body.nextDueDate,
         expense: expense && expense._id,
       });
       vehicle.status = 'maintenance';
       await vehicle.save();
-      return log;
+      return log.populate('maintenanceCategory', 'name description status');
     } catch (error) {
       await voidExpense(expense);
       throw error;
     }
   },
 
-  async listMaintenance(id, query) {
-    await getMutable(id);
-    return new BaseRepository(Maintenance).paginate({
-      filter: { vehicle: id },
+  async listAllMaintenance(query) {
+    console.log('listAllMaintenance query', query);
+    const filter = {};
+    if (query.vehicleId) filter.vehicle = query.vehicleId;
+    if (query.maintenanceCategoryId) filter.maintenanceCategory = query.maintenanceCategoryId;
+    if (query.from || query.to) {
+      filter.date = {};
+      if (query.from) filter.date.$gte = startOfUtcDay(query.from);
+      if (query.to) filter.date.$lte = endOfUtcDay(query.to);
+    }
+    if (query.search) {
+      const pattern = containsRegex(query.search);
+      filter.$or = [{ paidTo: pattern }, { reference: pattern }, { description: pattern }];
+    }
+
+    console.log('listAllMaintenance filter', filter);
+    const result = await new BaseRepository(Maintenance).paginate({
+      filter,
       page: query.page,
       limit: query.limit,
-      sort: { loggedAt: -1 },
+      sort: parseSort(query.sort, MAINTENANCE_SORT, { date: -1 }),
+      populate: MAINTENANCE_POPULATE,
     });
+    result.items = await presentMaintenanceList(result.items);
+    // console.log('listAllMaintenance result', JSON.stringify({
+    //   count: result.items.length,
+    //   meta: result.meta,
+    //   items: result.items,
+    // }, null, 2));
+    return result;
+  },
+
+  async listMaintenance(id, query) {
+    await getMutable(id);
+    return this.listAllMaintenance({ ...query, vehicleId: id });
+  },
+
+  async updateMaintenance(id, maintenanceId, body, user) {
+    const filter = { _id: maintenanceId };
+    if (id) filter.vehicle = id;
+    const log = await Maintenance.findOne(filter);
+    if (!log) throw new AppError('Maintenance log not found', 404, 'NOT_FOUND');
+
+    if (body.maintenanceCategoryId) {
+      const category = await requireDoc(
+        MaintenanceCategory,
+        body.maintenanceCategoryId,
+        'Maintenance category'
+      );
+      if (category.status !== 'active') {
+        throw new AppError('Maintenance category is inactive', 400, 'BAD_REQUEST');
+      }
+      log.maintenanceCategory = category._id;
+      if (!body.description && !log.description) {
+        log.description = `${category.name} — ${body.paidTo || log.paidTo}`;
+      }
+    }
+
+    assignDefined(log, body, ['paidTo', 'date', 'amount', 'modeOfPayment', 'reference', 'description']);
+    if (Object.prototype.hasOwnProperty.call(body, 'nextDueDate')) {
+      log.nextDueDate = body.nextDueDate || undefined;
+    }
+
+    if (log.completedAt && log.date && log.completedAt < log.date) {
+      throw new AppError('Maintenance date cannot be after the completion time', 400, 'BAD_REQUEST');
+    }
+
+    if (body.uploadReceipt && body.uploadReceipt !== log.uploadReceipt) {
+      removeStoredReceipt(log.uploadReceipt);
+      log.uploadReceipt = body.uploadReceipt;
+    }
+
+    if (body.recordExpense && !log.expense) {
+      const amount = log.amount;
+      if (!(amount > 0)) {
+        throw new AppError('A recorded expense needs an amount greater than zero', 400, 'BAD_REQUEST');
+      }
+      const expense = await recordExpense({
+        category: 'vehicle',
+        amount,
+        expenseDate: log.date || new Date(),
+        vehicleId: log.vehicle.toString(),
+        payeeName: body.payeeName || log.paidTo || 'Maintenance vendor',
+        description: log.description || 'Vehicle maintenance',
+        paymentModeNote: body.paymentModeNote || log.modeOfPayment,
+      }, user);
+      log.expense = expense._id;
+    }
+
+    await log.save();
+    await log.populate(MAINTENANCE_POPULATE);
+    return presentMaintenance(log);
   },
 
   async completeMaintenance(id, maintenanceId, body) {
@@ -457,8 +620,8 @@ const service = {
     if (log.completedAt) throw new AppError('Maintenance is already complete', 400, 'BAD_REQUEST');
 
     const completedAt = body.completedAt || new Date();
-    if (completedAt < log.loggedAt) {
-      throw new AppError('Completion time must be on or after the log time', 400, 'BAD_REQUEST');
+    if (log.date && completedAt < log.date) {
+      throw new AppError('Completion time must be on or after the maintenance date', 400, 'BAD_REQUEST');
     }
 
     log.completedAt = completedAt;
@@ -488,7 +651,7 @@ const service = {
 
     let site;
     if (body.siteId) {
-      site = await requireDoc(Site, body.siteId, 'Site', { isDeleted: false });
+      site = await requireDoc(Site, body.siteId, 'Site');
     }
 
     let expense;

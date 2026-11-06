@@ -4,7 +4,6 @@ const requireDoc = require('../../common/utils/requireDoc');
 const { nextCode } = require('../../common/utils/sequence');
 const {
   assignDefined,
-  archivedFilter,
   containsRegex,
   parseSort,
 } = require('../../common/utils/helpers');
@@ -12,22 +11,22 @@ const Employee = require('./employee.model');
 const Assignment = require('./assignment.model');
 const Department = require('../departments/department.model');
 const Site = require('../sites/site.model');
+const { removeStoredEmployeePhoto } = require('../../common/middleware/employeeUpload');
 
 const repo = new BaseRepository(Employee);
 const SORT_FIELDS = ['fullName', 'code', 'joiningDate', 'createdAt', 'designation'];
 const POPULATE = [
   { path: 'department', select: 'name code isActive' },
-  { path: 'site', select: 'name code status project' },
 ];
 
 async function getActive(id) {
   const doc = await Employee.findById(id).populate(POPULATE);
-  if (!doc || doc.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
   return doc;
 }
 
 async function assertDepartment(departmentId) {
-  const department = await requireDoc(Department, departmentId, 'Department', { isDeleted: false });
+  const department = await requireDoc(Department, departmentId, 'Department');
   if (!department.isActive) {
     throw new AppError('Department is inactive', 400, 'BAD_REQUEST');
   }
@@ -76,7 +75,7 @@ async function assignToSite(employee, siteId, startDate, remarks) {
     throw new AppError('Only active employees can be assigned to a site', 400, 'BAD_REQUEST');
   }
 
-  const site = await requireDoc(Site, siteId, 'Site', { isDeleted: false });
+  const site = await requireDoc(Site, siteId, 'Site');
   if (site.status !== 'active') {
     throw new AppError('Employees can only be assigned to an active site', 400, 'BAD_REQUEST');
   }
@@ -127,7 +126,6 @@ async function create(body) {
     idNumber: body.idNumber || null,
     profilePhoto: body.profilePhoto || null,
     idPhotos: body.idPhotos || [],
-    site: body.siteId || null,
     bankName: body.bankName || '',
     accountNumber: body.accountNumber || '',
     ifscCode: body.ifscCode || '',
@@ -161,7 +159,7 @@ async function create(body) {
 }
 
 async function list(query) {
-  const filter = { ...archivedFilter(query) };
+  const filter = {};
   if (query.departmentId) filter.department = query.departmentId;
   if (query.status) filter.status = query.status;
   if (query.employmentType) filter.employmentType = query.employmentType;
@@ -204,7 +202,7 @@ async function getById(id) {
 
 async function update(id, body) {
   const doc = await Employee.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
 
   if (body.departmentId) {
     await assertDepartment(body.departmentId);
@@ -220,10 +218,6 @@ async function update(id, body) {
   if (Object.prototype.hasOwnProperty.call(body, 'relievingDate')) {
     doc.relievingDate = body.relievingDate || undefined;
   }
-  if (Object.prototype.hasOwnProperty.call(body, 'siteId')) {
-    if (body.siteId) await requireDoc(Site, body.siteId, 'Site', { isDeleted: false });
-    doc.site = body.siteId || null;
-  }
   if (Object.prototype.hasOwnProperty.call(body, 'idNumber')) {
     doc.idNumber = body.idNumber || null;
   }
@@ -234,7 +228,18 @@ async function update(id, body) {
     doc.ifscCode = body.ifscCode || '';
   }
   if (Object.prototype.hasOwnProperty.call(body, 'profilePhoto')) {
+    if (body.profilePhoto && body.profilePhoto !== doc.profilePhoto) {
+      removeStoredEmployeePhoto(doc.profilePhoto);
+    }
     doc.profilePhoto = body.profilePhoto || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'idPhotos')) {
+    const nextPhotos = Array.isArray(body.idPhotos) ? body.idPhotos : [];
+    const previous = Array.isArray(doc.idPhotos) ? doc.idPhotos : [];
+    for (const oldPath of previous) {
+      if (!nextPhotos.includes(oldPath)) removeStoredEmployeePhoto(oldPath);
+    }
+    doc.idPhotos = nextPhotos;
   }
 
   assignDefined(doc, body, [
@@ -242,7 +247,6 @@ async function update(id, body) {
     'address',
     'designation',
     'idType',
-    'idPhotos',
     'bankName',
     'employmentType',
     'status',
@@ -269,27 +273,14 @@ async function update(id, body) {
 
 async function remove(id) {
   const doc = await Employee.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
-  await closeCurrentAssignments(doc._id, new Date());
-  doc.isDeleted = true;
-  if (doc.status === 'active') doc.status = 'inactive';
-  await doc.save();
-}
-
-async function restore(id) {
-  const doc = await Employee.findById(id);
   if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
-  if (!doc.isDeleted) throw new AppError('Employee is already active', 400, 'BAD_REQUEST');
-  await assertDepartment(doc.department);
-  doc.isDeleted = false;
-  if (doc.status !== 'resigned') doc.status = 'active';
-  await doc.save();
-  return getById(doc.id);
+  await Assignment.deleteMany({ employee: doc._id });
+  await doc.deleteOne();
 }
 
 async function assign(employeeId, body) {
   const employee = await Employee.findById(employeeId);
-  if (!employee || employee.isDeleted) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  if (!employee) throw new AppError('Employee not found', 404, 'NOT_FOUND');
   const assigned = await assignToSite(employee, body.siteId, body.startDate, body.remarks);
   return presentAssignment(assigned.assignment, assigned.site);
 }
@@ -325,7 +316,6 @@ module.exports = {
   getById,
   update,
   remove,
-  restore,
   assign,
   release,
   listAssignments,

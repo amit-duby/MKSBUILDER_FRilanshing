@@ -12,7 +12,6 @@ const itemSchema = new mongoose.Schema(
     reorderLevel: { type: Number, required: true, min: 0, default: 0 },
     description: { type: String, trim: true, maxlength: 500, default: '' },
     isActive: { type: Boolean, default: true },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.inventoryItems }
 );

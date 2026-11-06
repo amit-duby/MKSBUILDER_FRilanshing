@@ -22,7 +22,6 @@ const projectSchema = new mongoose.Schema(
     city: { type: String, trim: true, maxlength: 80, default: '' },
     state: { type: String, trim: true, maxlength: 80, default: '' },
     pincode: { type: String, trim: true, maxlength: 12, default: '' },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.projects }
 );

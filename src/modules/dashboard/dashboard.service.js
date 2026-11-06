@@ -10,7 +10,7 @@ const Attendance = require('../attendance/attendance.model');
 
 async function lowStockCount() {
   const [row] = await Item.aggregate([
-    { $match: { isDeleted: false, isActive: true, reorderLevel: { $gt: 0 } } },
+    { $match: { isActive: true, reorderLevel: { $gt: 0 } } },
     {
       $lookup: {
         from: COLLECTIONS.stockBalances,
@@ -64,15 +64,15 @@ async function overview() {
     accountsThisMonth,
     attendance,
   ] = await Promise.all([
-    Project.countDocuments({ isDeleted: false }),
-    Project.countDocuments({ isDeleted: false, status: 'active' }),
-    Site.countDocuments({ isDeleted: false }),
-    Site.countDocuments({ isDeleted: false, status: 'active' }),
-    Employee.countDocuments({ isDeleted: false }),
-    Employee.countDocuments({ isDeleted: false, status: 'active' }),
-    Vehicle.countDocuments({ isDeleted: false, status: 'available' }),
-    Vehicle.countDocuments({ isDeleted: false, status: 'assigned' }),
-    Vehicle.countDocuments({ isDeleted: false, status: 'maintenance' }),
+    Project.countDocuments({}),
+    Project.countDocuments({ status: 'active' }),
+    Site.countDocuments({}),
+    Site.countDocuments({ status: 'active' }),
+    Employee.countDocuments({}),
+    Employee.countDocuments({ status: 'active' }),
+    Vehicle.countDocuments({ status: 'available' }),
+    Vehicle.countDocuments({ status: 'assigned' }),
+    Vehicle.countDocuments({ status: 'maintenance' }),
     lowStockCount(),
     summary({}),
     attendanceToday(),

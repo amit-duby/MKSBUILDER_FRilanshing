@@ -27,11 +27,6 @@ function assignDefined(target, source, keys) {
   return target;
 }
 
-function archivedFilter(query) {
-  if (query && query.includeArchived) return {};
-  return { isDeleted: false };
-}
-
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
 
 function startOfUtcDay(date) {
@@ -96,8 +91,9 @@ module.exports = {
   containsRegex,
   parseSort,
   assignDefined,
-  archivedFilter,
   startOfUtcDay,
+  startOfBusinessDay,
+  calendarDayLabel,
   endOfUtcDay,
   addDays,
   resolveRange,

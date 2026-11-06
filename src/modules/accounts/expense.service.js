@@ -40,14 +40,14 @@ async function buildPayload(body) {
   let payeeName = body.payeeName;
 
   if (body.employeeId) {
-    const employee = await requireDoc(Employee, body.employeeId, 'Employee', { isDeleted: false });
+    const employee = await requireDoc(Employee, body.employeeId, 'Employee');
     if (!payeeName) payeeName = employee.fullName;
   }
   if (body.vehicleId) {
-    await requireDoc(Vehicle, body.vehicleId, 'Vehicle', { isDeleted: false });
+    await requireDoc(Vehicle, body.vehicleId, 'Vehicle');
   }
   if (body.itemId) {
-    await requireDoc(Item, body.itemId, 'Item', { isDeleted: false });
+    await requireDoc(Item, body.itemId, 'Item');
   }
   if (!payeeName) {
     throw new AppError('Payee name is required', 400, 'BAD_REQUEST');

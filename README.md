@@ -65,7 +65,7 @@ Send the token as `Authorization: Bearer <token>`. Sample calls are in `examples
 }
 ```
 
-List endpoints accept `page`, `limit` (max 100), `search`, and `sort` (`name` or `-createdAt`). Unknown sort fields are rejected. Master records are archived, not hard-deleted. Pass `includeArchived=true` to list them, and `POST /:id/restore` to bring one back.
+List endpoints accept `page`, `limit` (max 100), `search`, and `sort` (`name` or `-createdAt`). Unknown sort fields are rejected. Delete permanently removes the record.
 
 ## Salary and expenses
 

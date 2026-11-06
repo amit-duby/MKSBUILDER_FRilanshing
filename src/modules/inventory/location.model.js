@@ -10,7 +10,6 @@ const stockLocationSchema = new mongoose.Schema(
     site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site', unique: true, sparse: true },
     isSystem: { type: Boolean, default: false },
     isActive: { type: Boolean, default: true },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.stockLocations }
 );

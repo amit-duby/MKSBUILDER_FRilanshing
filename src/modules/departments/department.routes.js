@@ -10,6 +10,5 @@ router.post('/create', validate(schema.create), controller.create);
 router.get('/get-by-id/:id', validate(schema.byId), controller.getById);
 router.patch('/update/:id', validate(schema.update), controller.update);
 router.delete('/remove/:id', validate(schema.byId), controller.remove);
-router.post('/:id/restore', validate(schema.byId), controller.restore);
 
 module.exports = router;

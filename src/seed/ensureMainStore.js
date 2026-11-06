@@ -4,8 +4,7 @@ const StockLocation = require('../modules/inventory/location.model');
 async function ensureMainStore() {
   const existing = await StockLocation.findOne({ code: 'LOC-MAIN' });
   if (existing) {
-    if (existing.isDeleted || !existing.isActive) {
-      existing.isDeleted = false;
+    if (!existing.isActive) {
       existing.isActive = true;
       existing.isSystem = true;
       await existing.save();

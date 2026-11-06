@@ -8,8 +8,7 @@ const crud = buildController(service, {
   listed: 'Employees fetched',
   fetched: 'Employee fetched',
   updated: 'Employee updated',
-  removed: 'Employee archived',
-  restored: 'Employee restored',
+  removed: 'Employee deleted',
 });
 
 const assign = asyncHandler(async (req, res) => {

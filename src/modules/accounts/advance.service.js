@@ -66,7 +66,7 @@ function presentAdvance(doc) {
 }
 
 async function buildPayload(body) {
-  const employee = await requireDoc(Employee, body.employeeId, 'Employee', { isDeleted: false });
+  const employee = await requireDoc(Employee, body.employeeId, 'Employee');
   if (!(Number(body.advanceAmount) > 0)) {
     throw new AppError('Advance amount must be greater than zero', 400, 'BAD_REQUEST');
   }

@@ -32,7 +32,6 @@ const vehicleSchema = new mongoose.Schema(
       pollutionExpiry: Date,
     },
     notes: { type: String, trim: true, maxlength: 1000, default: '' },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.vehicles }
 );

@@ -9,7 +9,6 @@ const { roundMoney } = require('../../common/utils/money');
 const { roundQuantity } = require('../../common/utils/quantity');
 const {
   assignDefined,
-  archivedFilter,
   containsRegex,
   escapeRegex,
   parseSort,
@@ -45,7 +44,7 @@ function sessionOptions(session, extra = {}) {
 
 async function getItem(id) {
   const doc = await itemRepo.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Item not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Item not found', 404, 'NOT_FOUND');
   return doc;
 }
 
@@ -118,7 +117,6 @@ async function relatedItemIds(itemOrId) {
     return fallback ? [fallback] : [];
   }
   const ids = await Item.find({
-    isDeleted: false,
     name: new RegExp(`^${escapeRegex(String(item.name).trim())}$`, 'i'),
   }).distinct('_id');
   return ids.length ? ids : [item._id];
@@ -154,7 +152,7 @@ async function attachOnHand(docs) {
       return json;
     });
   }
-  const related = await Item.find({ isDeleted: false, $or: nameFilters }).select('_id name');
+  const related = await Item.find({ $or: nameFilters }).select('_id name');
   const qtyByItem = new Map();
   if (related.length) {
     const grouped = await Balance.aggregate([
@@ -224,7 +222,7 @@ async function attachStockFlow(docs) {
       return json;
     });
   }
-  const related = await Item.find({ isDeleted: false, $or: nameFilters }).select('_id name');
+  const related = await Item.find({ $or: nameFilters }).select('_id name');
   const totals = related.length
     ? await movementTotals({ item: { $in: related.map((row) => row._id) } })
     : new Map();
@@ -254,7 +252,7 @@ const items = {
   },
 
   async list(query) {
-    const filter = { ...archivedFilter(query) };
+    const filter = {};
     if (query.category) filter.category = query.category;
     if (query.isActive !== undefined) filter.isActive = query.isActive;
     if (query.search) {
@@ -292,27 +290,15 @@ const items = {
   async remove(id) {
     const doc = await getItem(id);
     if (await onHand(doc._id) > 0) {
-      throw new AppError('Issue or transfer remaining stock before archiving this item', 409, 'CONFLICT');
+      throw new AppError('Issue or transfer remaining stock before deleting this item', 409, 'CONFLICT');
     }
-    doc.isDeleted = true;
-    doc.isActive = false;
-    await doc.save();
-  },
-
-  async restore(id) {
-    const doc = await itemRepo.findById(id);
-    if (!doc) throw new AppError('Item not found', 404, 'NOT_FOUND');
-    if (!doc.isDeleted) throw new AppError('Item is already active', 400, 'BAD_REQUEST');
-    doc.isDeleted = false;
-    doc.isActive = true;
-    await doc.save();
-    return doc;
+    await doc.deleteOne();
   },
 };
 
 async function getLocation(id) {
   const doc = await Location.findById(id).populate('site', 'name code status');
-  if (!doc || doc.isDeleted) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
   return doc;
 }
 
@@ -320,7 +306,7 @@ const locations = {
   async create(body) {
     const codeJob = nextCode('stock_location', 'LOC');
     if (body.type === 'site_store') {
-      const site = await requireDoc(Site, body.siteId, 'Site', { isDeleted: false });
+      const site = await requireDoc(Site, body.siteId, 'Site');
       if (site.status !== 'active') {
         throw new AppError('Site store can only be added for an active site', 400, 'BAD_REQUEST');
       }
@@ -352,7 +338,7 @@ const locations = {
   },
 
   async list(query) {
-    const filter = { ...archivedFilter(query) };
+    const filter = {};
     if (query.type) filter.type = query.type;
     if (query.siteId) filter.site = query.siteId;
     if (query.search) {
@@ -375,7 +361,7 @@ const locations = {
 
   async update(id, body) {
     const doc = await Location.findById(id);
-    if (!doc || doc.isDeleted) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
+    if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
     assignDefined(doc, body, ['name', 'isActive']);
     await doc.save();
     if (!doc.site) return doc;
@@ -384,32 +370,16 @@ const locations = {
 
   async remove(id) {
     const doc = await Location.findById(id);
-    if (!doc || doc.isDeleted) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
-    if (doc.isSystem) throw new AppError('The main store cannot be archived', 409, 'CONFLICT');
+    if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
+    if (doc.isSystem) throw new AppError('The main store cannot be deleted', 409, 'CONFLICT');
     if (doc.type === 'site_store') {
-      throw new AppError('Archive the site to archive its store', 409, 'CONFLICT');
+      throw new AppError('Delete the site to delete its store', 409, 'CONFLICT');
     }
     const remaining = await Balance.exists({ location: doc._id, quantity: { $gt: 0 } });
     if (remaining) {
-      throw new AppError('Move remaining stock before archiving this location', 409, 'CONFLICT');
+      throw new AppError('Move remaining stock before deleting this location', 409, 'CONFLICT');
     }
-    doc.isDeleted = true;
-    doc.isActive = false;
-    await doc.save();
-  },
-
-  async restore(id) {
-    const doc = await Location.findById(id);
-    if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
-    if (doc.isSystem) return getLocation(doc.id);
-    if (!doc.isDeleted) throw new AppError('Stock location is already active', 400, 'BAD_REQUEST');
-    if (doc.type === 'site_store') {
-      throw new AppError('Restore the site to restore its store', 409, 'CONFLICT');
-    }
-    doc.isDeleted = false;
-    doc.isActive = true;
-    await doc.save();
-    return doc;
+    await doc.deleteOne();
   },
 };
 
@@ -566,13 +536,13 @@ async function withOptionalTransaction(work) {
 }
 
 async function activeLocation(id, label) {
-  const location = await requireDoc(Location, id, label, { isDeleted: false });
+  const location = await requireDoc(Location, id, label);
   if (!location.isActive) throw new AppError(`${label} is inactive`, 400, 'BAD_REQUEST');
   return location;
 }
 
 async function mainStore() {
-  const store = await Location.findOne({ code: 'LOC-MAIN', isDeleted: false });
+  const store = await Location.findOne({ code: 'LOC-MAIN' });
   if (!store || !store.isActive) {
     throw new AppError('Main store is not available', 404, 'NOT_FOUND');
   }
@@ -712,7 +682,7 @@ const stock = {
       return packStock(rows, query);
     }
 
-    const itemFilter = { isDeleted: false, isActive: true };
+    const itemFilter = { isActive: true };
     if (query.itemId) {
       const item = await getItem(query.itemId);
       itemFilter._id = { $in: await relatedItemIds(item) };
@@ -731,7 +701,7 @@ const stock = {
   async low(query) {
     const skip = (query.page - 1) * query.limit;
     const [result] = await Item.aggregate([
-      { $match: { isDeleted: false, isActive: true, reorderLevel: { $gt: 0 } } },
+      { $match: { isActive: true, reorderLevel: { $gt: 0 } } },
       {
         $lookup: {
           from: COLLECTIONS.stockBalances,
@@ -857,9 +827,9 @@ async function resolveMovementWrite(body) {
   const [item, locations, site, project, employee] = await Promise.all([
     getItem(body.itemId),
     Promise.all(locationIds.map((locationId) => activeLocation(locationId, 'Stock location'))),
-    movement.siteId ? requireDoc(Site, movement.siteId, 'Site', { isDeleted: false }) : null,
-    movement.projectId ? requireDoc(Project, movement.projectId, 'Project', { isDeleted: false }) : null,
-    body.employeeId ? requireDoc(Employee, body.employeeId, 'Employee', { isDeleted: false }) : null,
+    movement.siteId ? requireDoc(Site, movement.siteId, 'Site') : null,
+    movement.projectId ? requireDoc(Project, movement.projectId, 'Project') : null,
+    body.employeeId ? requireDoc(Employee, body.employeeId, 'Employee') : null,
   ]);
 
   if (!item.isActive) throw new AppError('Item is inactive', 400, 'BAD_REQUEST');

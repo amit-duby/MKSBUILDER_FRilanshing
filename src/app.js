@@ -8,6 +8,7 @@ const pinoHttp = require('pino-http');
 const { getConfig } = require('./config/env');
 const logger = require('./common/utils/logger');
 const requestContext = require('./common/middleware/requestContext');
+const publicUploads = require('./common/middleware/publicUploads');
 const sanitize = require('./common/middleware/sanitize');
 const { apiLimiter } = require('./common/middleware/rateLimit');
 const notFound = require('./common/middleware/notFound');
@@ -49,6 +50,7 @@ const docsHelmet = helmet({
   crossOriginEmbedderPolicy: false,
 });
 app.use((req, res, next) => {
+  if (req.path.startsWith('/uploads')) return next();
   if (req.path === '/api/docs' || req.path.startsWith('/api/docs/')) return docsHelmet(req, res, next);
   return apiHelmet(req, res, next);
 });
@@ -58,6 +60,7 @@ app.use(express.json({ limit: '1mb' }));
 app.use(sanitize);
 app.use(hpp());
 app.use(requestContext);
+app.use(publicUploads);
 app.use(pinoHttp({
   logger,
   genReqId: (req) => req.id,
@@ -82,10 +85,18 @@ app.get('/', (_req, res) => {
   });
 });
 
-app.use('/uploads', express.static(path.join(process.cwd(), 'uploads'), {
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Content-Disposition', 'inline');
+  next();
+}, express.static(path.join(process.cwd(), 'uploads'), {
   maxAge: '7d',
-  setHeaders(res) {
+  setHeaders(res, filePath) {
     res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Content-Disposition', 'inline');
+    if (filePath.toLowerCase().endsWith('.pdf')) {
+      res.type('application/pdf');
+    }
   },
 }));
 app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(openapi, {

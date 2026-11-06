@@ -18,7 +18,6 @@ const siteSchema = new mongoose.Schema(
     startDate: { type: Date, required: true },
     expectedEndDate: { type: Date },
     notes: { type: String, trim: true, maxlength: 1000, default: '' },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.sites }
 );

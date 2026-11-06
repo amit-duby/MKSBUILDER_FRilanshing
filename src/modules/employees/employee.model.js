@@ -33,12 +33,6 @@ const employeeSchema = new mongoose.Schema(
     idNumber: { type: String, trim: true, maxlength: 40, default: null },
     profilePhoto: { type: String, trim: true, maxlength: 500, default: null },
     idPhotos: { type: [{ type: String, trim: true, maxlength: 500 }], default: [] },
-    site: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'Site',
-      default: null,
-      index: true,
-    },
     bankName: { type: String, trim: true, maxlength: 120, default: '' },
     accountNumber: { type: String, trim: true, maxlength: 20, default: '' },
     ifscCode: { type: String, trim: true, uppercase: true, maxlength: 11, default: '' },
@@ -52,7 +46,6 @@ const employeeSchema = new mongoose.Schema(
       allowances: { type: [allowanceSchema], default: [] },
     },
     notes: { type: String, trim: true, maxlength: 1000, default: '' },
-    isDeleted: { type: Boolean, default: false, index: true },
   },
   { timestamps: true, collection: COLLECTIONS.employees }
 );

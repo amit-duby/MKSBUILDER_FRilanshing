@@ -1,18 +1,40 @@
 const express = require('express');
 const validate = require('../../common/middleware/validate');
+const { maintenanceUpload } = require('../../common/middleware/maintenanceUpload');
 const schema = require('./vehicle.validation');
 const controller = require('./vehicle.controller');
+const maintenanceCategoryRoutes = require('./maintenanceCategory.routes');
 
 const router = express.Router();
 
+router.use('/maintenance-categories', maintenanceCategoryRoutes);
 router.get('/alerts', validate(schema.alerts), controller.alerts);
+router.get('/assignments', validate(schema.listAllAssignments), controller.listAllAssignments);
+router.get('/maintenance', validate(schema.listAllMaintenance), controller.listAllMaintenance);
+router.patch(
+  '/maintenance/:maintenanceId',
+  maintenanceUpload,
+  validate(schema.updateMaintenanceById),
+  controller.updateMaintenance
+);
 router.get('/', validate(schema.list), controller.list);
 router.post('/', validate(schema.create), controller.create);
 router.get('/:id/assignments', validate(schema.pagedChild), controller.listAssignments);
 router.post('/:id/assign', validate(schema.assign), controller.assign);
 router.post('/:id/release', validate(schema.release), controller.release);
 router.get('/:id/maintenance', validate(schema.pagedChild), controller.listMaintenance);
-router.post('/:id/maintenance', validate(schema.maintenance), controller.addMaintenance);
+router.post(
+  '/:id/maintenance',
+  maintenanceUpload,
+  validate(schema.maintenance),
+  controller.addMaintenance
+);
+router.patch(
+  '/:id/maintenance/:maintenanceId',
+  maintenanceUpload,
+  validate(schema.updateMaintenance),
+  controller.updateMaintenance
+);
 router.post(
   '/:id/maintenance/:maintenanceId/complete',
   validate(schema.complete),
@@ -23,6 +45,5 @@ router.post('/:id/fuel-logs', validate(schema.fuel), controller.addFuel);
 router.get('/:id', validate(schema.byId), controller.getById);
 router.patch('/:id', validate(schema.update), controller.update);
 router.delete('/:id', validate(schema.byId), controller.remove);
-router.post('/:id/restore', validate(schema.byId), controller.restore);
 
 module.exports = router;

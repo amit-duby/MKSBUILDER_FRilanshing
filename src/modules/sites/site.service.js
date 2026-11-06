@@ -3,7 +3,6 @@ const BaseRepository = require('../../common/repository/baseRepository');
 const { nextCode } = require('../../common/utils/sequence');
 const {
   assignDefined,
-  archivedFilter,
   containsRegex,
   parseSort,
 } = require('../../common/utils/helpers');
@@ -24,13 +23,13 @@ const POPULATE = [
 
 async function getActive(id) {
   const doc = await Site.findById(id).populate(POPULATE);
-  if (!doc || doc.isDeleted) throw new AppError('Site not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
   return doc;
 }
 
 async function assertIncharge(inchargeId) {
   if (!inchargeId) return;
-  const employee = await requireDoc(Employee, inchargeId, 'Employee', { isDeleted: false });
+  const employee = await requireDoc(Employee, inchargeId, 'Employee');
   if (employee.status !== 'active') {
     throw new AppError('Site incharge must be an active employee', 400, 'BAD_REQUEST');
   }
@@ -43,7 +42,7 @@ function assertDates(doc) {
 }
 
 async function create(body) {
-  const project = await requireDoc(Project, body.projectId, 'Project', { isDeleted: false });
+  const project = await requireDoc(Project, body.projectId, 'Project');
   if (project.status === 'completed' || project.status === 'cancelled') {
     throw new AppError('Cannot add a site to a completed or cancelled project', 400, 'BAD_REQUEST');
   }
@@ -82,7 +81,7 @@ async function create(body) {
 }
 
 async function list(query) {
-  const filter = { ...archivedFilter(query) };
+  const filter = {};
   if (query.projectId) filter.project = query.projectId;
   if (query.status) filter.status = query.status;
   if (query.search) {
@@ -105,7 +104,7 @@ async function getById(id) {
 
 async function update(id, body) {
   const doc = await Site.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Site not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
 
   if (Object.prototype.hasOwnProperty.call(body, 'inchargeId')) {
     if (body.inchargeId) await assertIncharge(body.inchargeId);
@@ -128,7 +127,7 @@ async function update(id, body) {
 
   if (body.name) {
     await StockLocation.updateOne(
-      { site: doc._id, isDeleted: false },
+      { site: doc._id },
       { $set: { name: `${doc.name} Store`.slice(0, 120) } }
     );
   }
@@ -137,67 +136,25 @@ async function update(id, body) {
 }
 
 async function assertStockClear(siteId) {
-  const location = await StockLocation.findOne({ site: siteId, isDeleted: false });
+  const location = await StockLocation.findOne({ site: siteId });
   if (!location) return null;
 
   const remaining = await StockBalance.exists({ location: location._id, quantity: { $gt: 0 } });
   if (remaining) {
-    throw new AppError('Transfer remaining site stock before archiving this site', 409, 'CONFLICT');
+    throw new AppError('Transfer remaining site stock before deleting this site', 409, 'CONFLICT');
   }
   return location;
 }
 
 async function remove(id) {
   const doc = await Site.findById(id);
-  if (!doc || doc.isDeleted) throw new AppError('Site not found', 404, 'NOT_FOUND');
+  if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
 
   const location = await assertStockClear(doc._id);
-  if (location) {
-    location.isActive = false;
-    location.isDeleted = true;
-    await location.save();
-  }
+  if (location) await location.deleteOne();
 
-  await EmployeeAssignment.updateMany(
-    { site: doc._id, isCurrent: true },
-    { $set: { isCurrent: false, endDate: new Date() } }
-  );
-
-  doc.isDeleted = true;
-  doc.status = 'inactive';
-  await doc.save();
+  await EmployeeAssignment.deleteMany({ site: doc._id });
+  await doc.deleteOne();
 }
 
-async function restore(id) {
-  const doc = await Site.findById(id);
-  if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
-  if (!doc.isDeleted) throw new AppError('Site is already active', 400, 'BAD_REQUEST');
-
-  const project = await requireDoc(Project, doc.project, 'Project', { isDeleted: false });
-  if (project.status === 'completed' || project.status === 'cancelled') {
-    throw new AppError('Restore the project before restoring this site', 409, 'CONFLICT');
-  }
-
-  doc.isDeleted = false;
-  doc.status = 'active';
-  await doc.save();
-
-  const location = await StockLocation.findOne({ site: doc._id });
-  if (location) {
-    location.isDeleted = false;
-    location.isActive = true;
-    await location.save();
-  } else {
-    await StockLocation.create({
-      code: await nextCode('stock_location', 'LOC'),
-      name: `${doc.name} Store`.slice(0, 120),
-      type: 'site_store',
-      site: doc._id,
-      isActive: true,
-    });
-  }
-
-  return getActive(doc.id);
-}
-
-module.exports = { create, list, getById, update, remove, restore };
+module.exports = { create, list, getById, update, remove };

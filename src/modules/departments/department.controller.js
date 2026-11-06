@@ -6,6 +6,5 @@ module.exports = buildController(service, {
   listed: 'Departments fetched',
   fetched: 'Department fetched',
   updated: 'Department updated',
-  removed: 'Department archived',
-  restored: 'Department restored',
+  removed: 'Department deleted',
 });

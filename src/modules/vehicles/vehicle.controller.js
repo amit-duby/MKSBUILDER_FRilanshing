@@ -8,8 +8,7 @@ const crud = buildController(service, {
   listed: 'Vehicles fetched',
   fetched: 'Vehicle fetched',
   updated: 'Vehicle updated',
-  removed: 'Vehicle archived',
-  restored: 'Vehicle restored',
+  removed: 'Vehicle deleted',
 });
 
 const alerts = asyncHandler(async (req, res) => {
@@ -27,6 +26,11 @@ const release = asyncHandler(async (req, res) => {
   return ok(res, data, 'Vehicle released');
 });
 
+const listAllAssignments = asyncHandler(async (req, res) => {
+  const result = await service.listAllAssignments(req.query);
+  return ok(res, result.items, 'Vehicle assignments fetched', result.meta);
+});
+
 const listAssignments = asyncHandler(async (req, res) => {
   const result = await service.listAssignments(req.params.id, req.query);
   return ok(res, result.items, 'Vehicle assignments fetched', result.meta);
@@ -37,9 +41,24 @@ const addMaintenance = asyncHandler(async (req, res) => {
   return created(res, data, 'Maintenance logged');
 });
 
+const listAllMaintenance = asyncHandler(async (req, res) => {
+  const result = await service.listAllMaintenance(req.query);
+  return ok(res, result.items, 'Maintenance logs fetched', result.meta);
+});
+
 const listMaintenance = asyncHandler(async (req, res) => {
   const result = await service.listMaintenance(req.params.id, req.query);
   return ok(res, result.items, 'Maintenance logs fetched', result.meta);
+});
+
+const updateMaintenance = asyncHandler(async (req, res) => {
+  const data = await service.updateMaintenance(
+    req.params.id,
+    req.params.maintenanceId,
+    req.body,
+    req.user
+  );
+  return ok(res, data, 'Maintenance updated');
 });
 
 const completeMaintenance = asyncHandler(async (req, res) => {
@@ -62,9 +81,12 @@ module.exports = {
   alerts,
   assign,
   release,
+  listAllAssignments,
   listAssignments,
   addMaintenance,
+  listAllMaintenance,
   listMaintenance,
+  updateMaintenance,
   completeMaintenance,
   addFuel,
   listFuel,

@@ -58,7 +58,6 @@ function assertAdmin(user) {
 }
 
 async function register(body, actor) {
-
   const email = body.email.toLowerCase();
   const existing = await User.findOne({ email });
   if (existing) {
@@ -211,7 +210,7 @@ async function resetPassword(token, body) {
     throw new AppError('password does not match', 401, 'UNAUTHORIZED');
   }
 
-  const resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
+  const resetPasswordToken = hashResetToken(token);
   const user = await User.findOne({
     passwordResetTokenHash: resetPasswordToken,
     passwordResetExpiresAt: { $gt: new Date() },

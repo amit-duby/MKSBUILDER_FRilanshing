@@ -46,7 +46,20 @@ const salaryShape = {
   allowances: z.array(amountLine).max(20).optional(),
 };
 
-const createBody = z.object({
+const createBody = z.preprocess((value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const body = { ...value };
+  if (!body.salary || typeof body.salary !== 'object' || Array.isArray(body.salary)) {
+    body.salary = {};
+  }
+  if (body.baseAmount !== undefined && body.salary.baseAmount === undefined) {
+    body.salary.baseAmount = body.baseAmount;
+  }
+  if (body.payBasis !== undefined && body.salary.payBasis === undefined) {
+    body.salary.payBasis = body.payBasis;
+  }
+  return body;
+}, z.object({
   fullName: shortText(120),
   phone: phone.optional(),
   email: email.optional(),
@@ -76,7 +89,7 @@ const createBody = z.object({
       message: 'Relieving date must be on or after the joining date',
     });
   }
-});
+}));
 
 const updateBody = z.object({
   fullName: shortText(120).optional(),
@@ -95,7 +108,6 @@ const updateBody = z.object({
     allowances: z.array(amountLine).max(20).optional(),
   }).optional(),
   notes: optionalText(1000),
-  siteId: objectId.nullable().optional(),
   idType: optionalText(40),
   idNumber: optionalText(40).nullable(),
   profilePhoto: photoPath.nullable().optional(),

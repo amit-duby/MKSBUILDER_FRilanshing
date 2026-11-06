@@ -11,7 +11,6 @@ const assignmentSchema = new mongoose.Schema(
       index: true,
     },
     site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site', required: true },
-    project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project', required: true },
     driver: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee' },
     assignedAt: { type: Date, required: true },
     releasedAt: { type: Date, default: null },
@@ -21,9 +20,9 @@ const assignmentSchema = new mongoose.Schema(
 );
 
 assignmentSchema.index({ vehicle: 1, assignedAt: -1 });
-assignmentSchema.index({ project: 1, releasedAt: 1 });
 assignmentSchema.index({ site: 1, releasedAt: 1 });
 
 applyJson(assignmentSchema);
 
 module.exports = mongoose.model('VehicleAssignment', assignmentSchema);
+2

@@ -10,6 +10,9 @@ function duplicateMessage(error) {
   if (keys.includes('registrationNumber')) {
     return 'A vehicle with this registration number already exists';
   }
+  if (keys.includes('name')) {
+    return 'A maintenance category with this name already exists';
+  }
   if (keys.includes('email')) {
     return 'This email is already in use';
   }
