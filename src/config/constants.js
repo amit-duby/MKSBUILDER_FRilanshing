@@ -18,6 +18,7 @@ const VEHICLE_STATUS = ['available', 'assigned', 'maintenance', 'inactive',];
 const FUEL_TYPES = ['diesel', 'petrol', 'cng', 'electric', 'other'];
 const MAINTENANCE_TYPES = ['service', 'repair', 'tyre', 'insurance', 'other'];
 const MAINTENANCE_CATEGORY_STATUS = ['active', 'inactive'];
+const VEHICLE_TYPE_STATUS = ['active', 'inactive'];
 
 const EXPENSE_CATEGORIES = [
   'employee_advance',
@@ -50,6 +51,7 @@ const COLLECTIONS = {
   stockBalances: 'stock_balances',
   stockMovements: 'stock_movements',
   vehicles: 'vehicles',
+  vehicleTypes: 'vehicle_types',
   vehicleAssignments: 'vehicle_assignments',
   vehicleMaintenance: 'vehicle_maintenance_logs',
   vehicleMaintenanceCategories: 'vehicle_maintenance_categories',
@@ -86,6 +88,7 @@ module.exports = {
   FUEL_TYPES,
   MAINTENANCE_TYPES,
   MAINTENANCE_CATEGORY_STATUS,
+  VEHICLE_TYPE_STATUS,
   EXPENSE_CATEGORIES,
   EMPLOYEE_EXPENSE_CATEGORIES,
   PAYMENT_MODE_NOTES,

@@ -24,7 +24,7 @@ for (const field of DOCUMENT_EXPIRY_FIELDS) {
 
 const vehicleFields = {
   registrationNumber: shortText(20),
-  type: shortText(40),
+  vehicleTypeId: objectId,
   make: optionalText(80),
   modelName: optionalText(80),
   year: z.coerce.number().int().min(1980).max(2100).optional(),
@@ -34,21 +34,7 @@ const vehicleFields = {
   notes: optionalText(1000),
 };
 
-const createBody = z.object({
-  ...vehicleFields,
-  siteId: objectId.optional(),
-  driverId: objectId.optional(),
-  assignedAt: dateValue.optional(),
-  remarks: optionalText(300),
-}).superRefine((data, ctx) => {
-  if (!data.siteId && (data.driverId || data.assignedAt || data.remarks)) {
-    ctx.addIssue({
-      code: 'custom',
-      path: ['siteId'],
-      message: 'Choose a site to assign this vehicle',
-    });
-  }
-});
+const createBody = z.object(vehicleFields);
 
 const updateBody = z.object(vehicleFields).partial().extend({
   registrationNumber: shortText(20).optional(),
@@ -139,7 +125,7 @@ module.exports = {
   list: requestSchema({
     query: listQuery({
       status: z.enum(VEHICLE_STATUS).optional(),
-      type: shortText(40).optional(),
+      vehicleTypeId: objectId.optional(),
       siteId: objectId.optional(),
     }),
   }),

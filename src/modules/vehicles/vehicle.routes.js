@@ -4,9 +4,11 @@ const { maintenanceUpload } = require('../../common/middleware/maintenanceUpload
 const schema = require('./vehicle.validation');
 const controller = require('./vehicle.controller');
 const maintenanceCategoryRoutes = require('./maintenanceCategory.routes');
+const vehicleTypeRoutes = require('./vehicleType.routes');
 
 const router = express.Router();
 
+router.use('/types', vehicleTypeRoutes);
 router.use('/maintenance-categories', maintenanceCategoryRoutes);
 router.get('/alerts', validate(schema.alerts), controller.alerts);
 router.get('/assignments', validate(schema.listAllAssignments), controller.listAllAssignments);

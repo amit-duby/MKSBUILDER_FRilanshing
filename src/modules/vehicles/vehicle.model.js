@@ -17,7 +17,12 @@ const vehicleSchema = new mongoose.Schema(
       trim: true,
       maxlength: 20,
     },
-    type: { type: String, required: true, trim: true, maxlength: 40 },
+    vehicleType: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'VehicleType',
+      required: true,
+      index: true,
+    },
     make: { type: String, trim: true, maxlength: 80, default: '' },
     modelName: { type: String, trim: true, maxlength: 80, default: '' },
     year: { type: Number, min: 1980, max: 2100 },

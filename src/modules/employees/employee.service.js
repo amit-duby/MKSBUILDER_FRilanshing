@@ -158,6 +158,26 @@ async function create(body) {
   return json;
 }
 
+async function loadCurrentAssignments(employeeIds) {
+  if (!employeeIds.length) return new Map();
+
+  const assignments = await Assignment.find({
+    employee: { $in: employeeIds },
+    isCurrent: true,
+  })
+    .populate('site', 'name code status project')
+    .sort({ startDate: -1 });
+
+  const byEmployee = new Map();
+  for (const assignment of assignments) {
+    const key = String(assignment.employee);
+    const list = byEmployee.get(key) || [];
+    list.push(typeof assignment.toJSON === 'function' ? assignment.toJSON() : assignment);
+    byEmployee.set(key, list);
+  }
+  return byEmployee;
+}
+
 async function list(query) {
   const filter = {};
   if (query.departmentId) filter.department = query.departmentId;
@@ -178,19 +198,26 @@ async function list(query) {
     ];
   }
 
-  return repo.paginate({
+  const result = await repo.paginate({
     filter,
     page: query.page,
     limit: query.limit,
     sort: parseSort(query.sort, SORT_FIELDS),
     populate: POPULATE,
   });
+
+  const byEmployee = await loadCurrentAssignments(result.items.map((item) => item._id || item.id));
+  result.items = result.items.map((item) => {
+    const json = typeof item.toJSON === 'function' ? item.toJSON() : item;
+    json.currentAssignments = byEmployee.get(String(item.id || item._id)) || [];
+    return json;
+  });
+  return result;
 }
 
 async function currentAssignments(employeeId) {
-  return Assignment.find({ employee: employeeId, isCurrent: true })
-    .populate('site', 'name code status project')
-    .sort({ startDate: -1 });
+  const byEmployee = await loadCurrentAssignments([employeeId]);
+  return byEmployee.get(String(employeeId)) || [];
 }
 
 async function getById(id) {

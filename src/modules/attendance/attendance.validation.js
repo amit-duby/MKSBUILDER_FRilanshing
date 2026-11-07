@@ -27,7 +27,6 @@ const markBody = z.object({
   employeeId: objectId,
   date: dateValue,
   status: z.enum(ATTENDANCE_STATUS),
-  projectId: objectId.optional(),
   siteId: objectId.optional(),
   checkIn: clock.nullable().optional(),
   checkOut: clock.nullable().optional(),
@@ -38,7 +37,6 @@ const markBody = z.object({
 const updateBody = z.object({
   date: dateValue.optional(),
   status: z.enum(ATTENDANCE_STATUS).optional(),
-  projectId: objectId.nullable().optional(),
   siteId: objectId.nullable().optional(),
   checkIn: clock.nullable().optional(),
   checkOut: clock.nullable().optional(),
@@ -58,7 +56,6 @@ const entryBody = z.object({
 
 const bulkBody = z.object({
   date: dateValue,
-  projectId: objectId.optional(),
   siteId: objectId.optional(),
   entries: z.array(entryBody).min(1).max(200),
 });
@@ -72,7 +69,6 @@ module.exports = {
       employeeId: objectId.optional(),
       departmentId: objectId.optional(),
       siteId: objectId.optional(),
-      projectId: objectId.optional(),
       status: z.enum(ATTENDANCE_STATUS).optional(),
     }),
   }),
@@ -94,7 +90,6 @@ module.exports = {
       employeeId: objectId.optional(),
       departmentId: objectId.optional(),
       siteId: objectId.optional(),
-      projectId: objectId.optional(),
       page: z.coerce.number().int().min(1).default(1),
       limit: z.coerce.number().int().min(1).max(100).default(20),
     }),

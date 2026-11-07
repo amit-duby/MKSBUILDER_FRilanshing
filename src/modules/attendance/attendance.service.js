@@ -4,7 +4,6 @@ const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const requireDoc = require('../../common/utils/requireDoc');
 const { nextCode, nextCodes } = require('../../common/utils/sequence');
-const { resolveProjectSite } = require('../../common/utils/projectSite');
 const {
   containsRegex,
   parseSort,
@@ -17,12 +16,12 @@ const { workedDayValue, resolveClockTimes, assertAttendanceTimes } = require('./
 const Attendance = require('./attendance.model');
 const Employee = require('../employees/employee.model');
 const Assignment = require('../employees/assignment.model');
+const Site = require('../sites/site.model');
 
 const SORT_FIELDS = ['attendanceDate', 'status', 'createdAt', 'code'];
 const POPULATE = [
   { path: 'employee', select: 'code fullName designation status department' },
   { path: 'site', select: 'name code status' },
-  { path: 'project', select: 'name code' },
 ];
 const EMPTY_TOTALS = {
   present: 0,
@@ -62,24 +61,19 @@ function publicSite(site) {
   };
 }
 
-function publicProject(project) {
-  if (!project) return null;
-  return {
-    id: project.id,
-    name: project.name,
-    code: project.code,
-  };
-}
-
 function presentLoaded(doc, refs = {}) {
   const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
   json.employee = publicEmployee(refs.employee);
   json.site = publicSite(refs.site);
-  json.project = publicProject(refs.project);
   return json;
 }
 
-function attendancePayload(input, employee, attendanceDate, links, user) {
+async function resolveSite(siteId) {
+  if (!siteId) return null;
+  return requireDoc(Site, siteId, 'Site');
+}
+
+function attendancePayload(input, employee, attendanceDate, site, user) {
   const times = resolveClockTimes(attendanceDate, input.checkIn, input.checkOut);
   const overtimeHours = input.overtimeHours || 0;
   assertAttendanceTimes({
@@ -94,8 +88,7 @@ function attendancePayload(input, employee, attendanceDate, links, user) {
     employee: employee._id,
     attendanceDate,
     status: input.status,
-    project: links.projectId || null,
-    site: links.site ? links.site._id : null,
+    site: site ? site._id : null,
     checkIn: nonWorking ? null : times.checkIn,
     checkOut: nonWorking ? null : times.checkOut,
     overtimeHours: nonWorking ? 0 : overtimeHours,
@@ -127,22 +120,27 @@ function assertEmploymentWindow(employee, attendanceDate) {
 
 async function loadMarkContext(input) {
   const attendanceDate = startOfBusinessDay(input.date);
-  const [employee, links, existing] = await Promise.all([
+  const [employee, site, existing] = await Promise.all([
     requireDoc(Employee, input.employeeId, 'Employee'),
-    resolveProjectSite(input.projectId || undefined, input.siteId || undefined),
+    resolveSite(input.siteId),
     Attendance.findOne({
       employee: input.employeeId,
       attendanceDate,
     }),
   ]);
   assertEmploymentWindow(employee, attendanceDate);
-  return { employee, links, existing, attendanceDate };
+  return { employee, site, existing, attendanceDate };
+}
+
+async function unsetLegacyProject(id) {
+  await Attendance.updateOne({ _id: id }, { $unset: { project: 1 } });
 }
 
 async function savePayload(payload, refs, existing) {
   if (existing) {
     Object.assign(existing, payload);
     await existing.save();
+    await unsetLegacyProject(existing._id);
     return { created: false, record: presentLoaded(existing, refs) };
   }
 
@@ -161,6 +159,7 @@ async function savePayload(payload, refs, existing) {
     if (!raced) throw error;
     Object.assign(raced, payload);
     await raced.save();
+    await unsetLegacyProject(raced._id);
     return { created: false, record: presentLoaded(raced, refs) };
   }
 }
@@ -195,9 +194,9 @@ async function applyPersonFilters(filter, query) {
 
 const service = {
   async mark(body, user) {
-    const { employee, links, existing, attendanceDate } = await loadMarkContext(body);
-    const payload = attendancePayload(body, employee, attendanceDate, links, user);
-    return savePayload(payload, { employee, site: links.site, project: links.project }, existing);
+    const { employee, site, existing, attendanceDate } = await loadMarkContext(body);
+    const payload = attendancePayload(body, employee, attendanceDate, site, user);
+    return savePayload(payload, { employee, site }, existing);
   },
 
   async bulk(body, user) {
@@ -211,18 +210,17 @@ const service = {
 
     const attendanceDate = startOfBusinessDay(body.date);
     const employeeIds = body.entries.map((entry) => entry.employeeId);
-    const linkCache = new Map();
-    const linkJobs = [];
+    const siteCache = new Map();
+    const siteJobs = [];
 
     for (const entry of body.entries) {
-      const projectId = entry.projectId || body.projectId;
       const siteId = entry.siteId || body.siteId;
-      const key = `${projectId || ''}:${siteId || ''}`;
-      if (!linkCache.has(key)) {
-        linkCache.set(key, null);
-        linkJobs.push(
-          resolveProjectSite(projectId, siteId).then((links) => {
-            linkCache.set(key, links);
+      const key = siteId || '';
+      if (!siteCache.has(key)) {
+        siteCache.set(key, null);
+        siteJobs.push(
+          resolveSite(siteId).then((site) => {
+            siteCache.set(key, site);
           })
         );
       }
@@ -231,7 +229,7 @@ const service = {
     const [employees, existingRows] = await Promise.all([
       Employee.find({ _id: { $in: employeeIds } }),
       Attendance.find({ employee: { $in: employeeIds }, attendanceDate }),
-      Promise.all(linkJobs),
+      Promise.all(siteJobs),
     ]);
 
     const employeeById = new Map(employees.map((employee) => [String(employee._id), employee]));
@@ -241,15 +239,15 @@ const service = {
       const employee = employeeById.get(entry.employeeId);
       if (!employee) throw new AppError('Employee not found', 404, 'NOT_FOUND');
       assertEmploymentWindow(employee, attendanceDate);
-      const links = linkCache.get(`${entry.projectId || body.projectId || ''}:${entry.siteId || body.siteId || ''}`);
+      const site = siteCache.get(entry.siteId || body.siteId || '');
       return {
         employee,
-        links,
+        site,
         payload: attendancePayload(
-          { ...entry, projectId: entry.projectId || body.projectId, siteId: entry.siteId || body.siteId },
+          { ...entry, siteId: entry.siteId || body.siteId },
           employee,
           attendanceDate,
-          links,
+          site,
           user
         ),
         existing: existingByEmployee.get(entry.employeeId) || null,
@@ -264,13 +262,13 @@ const service = {
     const now = new Date();
 
     for (const row of prepared) {
-      const refs = { employee: row.employee, site: row.links.site, project: row.links.project };
+      const refs = { employee: row.employee, site: row.site };
       if (row.existing) {
         Object.assign(row.existing, row.payload);
         ops.push({
           updateOne: {
             filter: { _id: row.existing._id },
-            update: { $set: row.payload },
+            update: { $set: row.payload, $unset: { project: 1 } },
           },
         });
         records.push(presentLoaded(row.existing, refs));
@@ -305,7 +303,6 @@ const service = {
     if (attendanceDate) filter.attendanceDate = attendanceDate;
     if (query.status) filter.status = query.status;
     if (query.siteId) filter.site = query.siteId;
-    if (query.projectId) filter.project = query.projectId;
     await applyPersonFilters(filter, query);
     if (query.search) filter.code = containsRegex(query.search);
 
@@ -334,7 +331,6 @@ const service = {
       employeeId: String(doc.employee),
       date: body.date || doc.attendanceDate,
       status: nextStatus,
-      projectId: body.projectId !== undefined ? body.projectId : doc.project,
       siteId: body.siteId !== undefined ? body.siteId : doc.site,
       checkIn: body.checkIn !== undefined ? body.checkIn : (nonWorking ? null : doc.checkIn),
       checkOut: body.checkOut !== undefined ? body.checkOut : (nonWorking ? null : doc.checkOut),
@@ -342,12 +338,12 @@ const service = {
       remarks: body.remarks !== undefined ? body.remarks : doc.remarks,
     };
     const attendanceDate = startOfBusinessDay(input.date);
-    const [employee, links] = await Promise.all([
+    const [employee, site] = await Promise.all([
       requireDoc(Employee, input.employeeId, 'Employee'),
-      resolveProjectSite(input.projectId || undefined, input.siteId || undefined),
+      resolveSite(input.siteId || undefined),
     ]);
     assertEmploymentWindow(employee, attendanceDate);
-    const payload = attendancePayload(input, employee, attendanceDate, links, user);
+    const payload = attendancePayload(input, employee, attendanceDate, site, user);
 
     if (payload.attendanceDate.getTime() !== doc.attendanceDate.getTime()) {
       const clash = await Attendance.findOne({
@@ -362,7 +358,8 @@ const service = {
 
     Object.assign(doc, payload);
     await doc.save();
-    return presentLoaded(doc, { employee, site: links.site, project: links.project });
+    await unsetLegacyProject(doc._id);
+    return presentLoaded(doc, { employee, site });
   },
 
   async remove(id) {
@@ -395,10 +392,7 @@ const service = {
     const marks = await Attendance.find({
       attendanceDate,
       employee: { $in: result.items.map((employee) => employee._id) },
-    }).populate([
-      { path: 'site', select: 'name code status' },
-      { path: 'project', select: 'name code' },
-    ]);
+    }).populate([{ path: 'site', select: 'name code status' }]);
 
     const byEmployee = new Map(marks.map((mark) => {
       const employeeId = mark.employee && mark.employee._id
@@ -423,7 +417,6 @@ const service = {
       attendanceDate: { $gte: range.from, $lte: range.to },
     };
     if (query.siteId) match.site = new mongoose.Types.ObjectId(query.siteId);
-    if (query.projectId) match.project = new mongoose.Types.ObjectId(query.projectId);
 
     if (query.departmentId) {
       const ids = await employeeIdsForDepartment(query.departmentId);

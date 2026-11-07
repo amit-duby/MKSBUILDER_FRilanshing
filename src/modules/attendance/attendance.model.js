@@ -13,7 +13,6 @@ const attendanceSchema = new mongoose.Schema(
     },
     attendanceDate: { type: Date, required: true, index: true },
     status: { type: String, enum: ATTENDANCE_STATUS, required: true, index: true },
-    project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site', index: true },
     checkIn: { type: Date },
     checkOut: { type: Date },

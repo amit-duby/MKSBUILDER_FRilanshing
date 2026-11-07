@@ -13,6 +13,7 @@ const {
 } = require('../../common/utils/helpers');
 const { COLLECTIONS, DOCUMENT_EXPIRY_FIELDS } = require('../../config/constants');
 const Vehicle = require('./vehicle.model');
+const VehicleType = require('./vehicleType.model');
 const Assignment = require('./assignment.model');
 const Maintenance = require('./maintenance.model');
 const MaintenanceCategory = require('./maintenanceCategory.model');
@@ -22,13 +23,18 @@ const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
 
 const repo = new BaseRepository(Vehicle);
-const SORT_FIELDS = ['registrationNumber', 'code', 'type', 'status', 'createdAt'];
+const SORT_FIELDS = ['registrationNumber', 'code', 'status', 'createdAt'];
+const VEHICLE_TYPE_POPULATE = { path: 'vehicleType', select: 'name description status' };
 const ASSIGNMENT_POPULATE = [
   { path: 'site', select: 'name code status' },
   { path: 'driver', select: 'fullName code designation' },
 ];
 const MAINTENANCE_POPULATE = [
-  { path: 'vehicle', select: 'code registrationNumber type status make modelName' },
+  {
+    path: 'vehicle',
+    select: 'code registrationNumber vehicleType status make modelName',
+    populate: VEHICLE_TYPE_POPULATE,
+  },
   { path: 'maintenanceCategory', select: 'name description status' },
 ];
 const MAINTENANCE_SORT = ['date', 'amount', 'createdAt'];
@@ -48,6 +54,19 @@ function asId(value) {
   return String(value);
 }
 
+function presentVehicleType(doc) {
+  if (!doc) return null;
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+  const id = asId(json);
+  if (!json.name) return id ? { id } : null;
+  return {
+    id,
+    name: json.name,
+    description: json.description || '',
+    status: json.status,
+  };
+}
+
 function presentVehicleBrief(doc) {
   if (!doc) return null;
   const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
@@ -57,11 +76,23 @@ function presentVehicleBrief(doc) {
     id,
     code: json.code,
     registrationNumber: json.registrationNumber,
-    type: json.type,
+    vehicleType: presentVehicleType(json.vehicleType),
     make: json.make || '',
     modelName: json.modelName || '',
     status: json.status,
   };
+}
+
+async function assertVehicleType(vehicleTypeId) {
+  const vehicleType = await requireDoc(VehicleType, vehicleTypeId, 'Vehicle type');
+  if (vehicleType.status !== 'active') {
+    throw new AppError('Choose an active vehicle type', 400, 'BAD_REQUEST');
+  }
+  return vehicleType;
+}
+
+async function unsetLegacyType(id) {
+  await Vehicle.updateOne({ _id: id }, { $unset: { type: 1 } });
 }
 
 function presentCategoryBrief(doc) {
@@ -129,13 +160,62 @@ async function getMutable(id) {
   return doc;
 }
 
+function presentAssignmentDetail(assignment) {
+  if (!assignment) return null;
+  const json = typeof assignment.toJSON === 'function' ? assignment.toJSON() : assignment;
+  return {
+    id: asId(json),
+    site: json.site
+      ? {
+          id: asId(json.site),
+          name: json.site.name,
+          code: json.site.code,
+          status: json.site.status,
+        }
+      : null,
+    driver: json.driver
+      ? {
+          id: asId(json.driver),
+          fullName: json.driver.fullName,
+          code: json.driver.code,
+          designation: json.driver.designation,
+        }
+      : null,
+    assignedAt: json.assignedAt,
+    releasedAt: json.releasedAt || null,
+    remarks: json.remarks || '',
+    createdAt: json.createdAt,
+    updatedAt: json.updatedAt,
+  };
+}
+
+async function loadCurrentAssignment(vehicle) {
+  let assignment = vehicle.currentAssignment;
+  if (assignment && assignment.site) return assignment;
+
+  if (vehicle.currentAssignment) {
+    assignment = await Assignment.findById(vehicle.currentAssignment).populate(ASSIGNMENT_POPULATE);
+    if (assignment) return assignment;
+  }
+
+  return Assignment.findOne({ vehicle: vehicle._id, releasedAt: null })
+    .sort({ assignedAt: -1 })
+    .populate(ASSIGNMENT_POPULATE);
+}
+
 async function present(id) {
-  const doc = await Vehicle.findById(id).populate({
-    path: 'currentAssignment',
-    populate: ASSIGNMENT_POPULATE,
-  });
+  const doc = await Vehicle.findById(id)
+    .populate(VEHICLE_TYPE_POPULATE)
+    .populate({
+      path: 'currentAssignment',
+      populate: ASSIGNMENT_POPULATE,
+    });
   if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
-  return doc;
+
+  const assignment = await loadCurrentAssignment(doc);
+  const json = doc.toJSON();
+  json.currentAssignment = presentAssignmentDetail(assignment);
+  return json;
 }
 
 function assertOdometer(vehicle, reading) {
@@ -212,16 +292,15 @@ function presentCreatedAssignment(assignment, site, driver) {
 
 const service = {
   async create(body) {
-    const assigning = Boolean(body.siteId);
-    const [code, targets] = await Promise.all([
+    const [code, vehicleType] = await Promise.all([
       nextCode('vehicle', 'VEH'),
-      assigning ? loadAssignmentTargets(body) : null,
+      assertVehicleType(body.vehicleTypeId),
     ]);
 
     const vehicle = await repo.create({
       code,
       registrationNumber: body.registrationNumber,
-      type: body.type,
+      vehicleType: vehicleType._id,
       make: body.make || '',
       modelName: body.modelName || '',
       year: body.year,
@@ -231,39 +310,14 @@ const service = {
       documents: body.documents || {},
       notes: body.notes || '',
     });
-
-    if (!assigning) return vehicle;
-
-    let assignment;
-    try {
-      assignment = await Assignment.create({
-        vehicle: vehicle._id,
-        site: targets.site._id,
-        driver: targets.driver && targets.driver._id,
-        assignedAt: body.assignedAt || new Date(),
-        releasedAt: null,
-        remarks: body.remarks || '',
-      });
-      vehicle.status = 'assigned';
-      vehicle.currentAssignment = assignment._id;
-      await vehicle.save();
-    } catch (error) {
-      await Promise.all([
-        Vehicle.deleteOne({ _id: vehicle._id }),
-        assignment ? Assignment.deleteOne({ _id: assignment._id }) : null,
-      ]);
-      throw error;
-    }
-
-    const json = vehicle.toJSON();
-    json.currentAssignment = presentCreatedAssignment(assignment, targets.site, targets.driver);
-    return json;
+    await unsetLegacyType(vehicle._id);
+    return present(vehicle.id);
   },
 
   async list(query) {
     const filter = {};
     if (query.status) filter.status = query.status;
-    if (query.type) filter.type = query.type;
+    if (query.vehicleTypeId) filter.vehicleType = query.vehicleTypeId;
     if (query.siteId) {
       const ids = await Assignment.find({ site: query.siteId, releasedAt: null }).distinct('vehicle');
       filter._id = { $in: ids };
@@ -283,7 +337,10 @@ const service = {
       page: query.page,
       limit: query.limit,
       sort: parseSort(query.sort, SORT_FIELDS),
-      populate: [{ path: 'currentAssignment', populate: ASSIGNMENT_POPULATE }],
+      populate: [
+        VEHICLE_TYPE_POPULATE,
+        { path: 'currentAssignment', populate: ASSIGNMENT_POPULATE },
+      ],
     });
   },
 
@@ -301,13 +358,16 @@ const service = {
     }
 
     if (body.registrationNumber) doc.registrationNumber = body.registrationNumber;
-    assignDefined(doc, body, ['type', 'make', 'modelName', 'year', 'fuelType', 'notes']);
+    if (body.vehicleTypeId) {
+      const vehicleType = await assertVehicleType(body.vehicleTypeId);
+      doc.vehicleType = vehicleType._id;
+    }
+    assignDefined(doc, body, ['make', 'modelName', 'year', 'fuelType', 'notes']);
     if (body.odometer !== undefined) assertOdometer(doc, body.odometer);
     applyDocuments(doc, body.documents);
     await doc.save();
-    if (!doc.currentAssignment) return doc;
-    await doc.populate({ path: 'currentAssignment', populate: ASSIGNMENT_POPULATE });
-    return doc;
+    await unsetLegacyType(doc._id);
+    return present(doc.id);
   },
 
   async remove(id) {
@@ -329,7 +389,9 @@ const service = {
       $or: DOCUMENT_EXPIRY_FIELDS.map((field) => ({
         [`documents.${field}`]: { $ne: null, $lte: horizon },
       })),
-    }).sort({ registrationNumber: 1 });
+    })
+      .populate(VEHICLE_TYPE_POPULATE)
+      .sort({ registrationNumber: 1 });
 
     return vehicles.map((vehicle) => {
       const json = vehicle.toJSON();
@@ -411,7 +473,11 @@ const service = {
       limit: query.limit,
       sort: { assignedAt: -1 },
       populate: [
-        { path: 'vehicle', select: 'code registrationNumber type status make modelName' },
+        {
+          path: 'vehicle',
+          select: 'code registrationNumber vehicleType status make modelName',
+          populate: VEHICLE_TYPE_POPULATE,
+        },
         ...ASSIGNMENT_POPULATE,
       ],
     });

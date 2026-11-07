@@ -14,6 +14,7 @@ const {
   VEHICLE_STATUS,
   FUEL_TYPES,
   MAINTENANCE_CATEGORY_STATUS,
+  VEHICLE_TYPE_STATUS,
   EXPENSE_CATEGORIES,
   PAYMENT_MODE_NOTES,
 } = require('../config/constants');
@@ -497,7 +498,6 @@ const schemas = {
       employeeId: objectId,
       date: dateString,
       status: { type: 'string', enum: ATTENDANCE_STATUS, example: 'present' },
-      projectId: objectId,
       siteId: objectId,
       checkIn: { type: 'string', example: '09:00' },
       checkOut: { type: 'string', example: '18:00' },
@@ -509,7 +509,6 @@ const schemas = {
   AttendanceBulk: schemaObject(
     {
       date: dateString,
-      projectId: objectId,
       siteId: objectId,
       entries: {
         type: 'array',
@@ -519,7 +518,6 @@ const schemas = {
           {
             employeeId: objectId,
             status: { type: 'string', enum: ATTENDANCE_STATUS },
-            projectId: objectId,
             siteId: objectId,
             checkIn: { type: 'string' },
             checkOut: { type: 'string' },
@@ -535,7 +533,6 @@ const schemas = {
   AttendanceUpdate: schemaObject({
     date: dateString,
     status: { type: 'string', enum: ATTENDANCE_STATUS },
-    projectId: { ...objectId, nullable: true },
     siteId: { ...objectId, nullable: true },
     checkIn: { type: 'string', nullable: true },
     checkOut: { type: 'string', nullable: true },
@@ -628,7 +625,7 @@ const schemas = {
   VehicleCreate: schemaObject(
     {
       registrationNumber: { type: 'string', maxLength: 20, example: 'UP32 AB 2002' },
-      type: { type: 'string', maxLength: 40, example: 'Tipper' },
+      vehicleTypeId: objectId,
       make: { type: 'string', maxLength: 80, example: 'Tata' },
       modelName: { type: 'string', maxLength: 80, example: 'Signa' },
       year: { type: 'integer', minimum: 1980, maximum: 2100, example: 2022 },
@@ -636,16 +633,12 @@ const schemas = {
       odometer: { type: 'number', minimum: 0, example: 12000 },
       documents: vehicleDocuments,
       notes: { type: 'string', maxLength: 1000 },
-      siteId: objectId,
-      driverId: objectId,
-      assignedAt: dateTimeString,
-      remarks: { type: 'string', maxLength: 300 },
     },
-    ['registrationNumber', 'type']
+    ['registrationNumber', 'vehicleTypeId']
   ),
   VehicleUpdate: schemaObject({
     registrationNumber: { type: 'string', maxLength: 20 },
-    type: { type: 'string', maxLength: 40 },
+    vehicleTypeId: objectId,
     make: { type: 'string', maxLength: 80 },
     modelName: { type: 'string', maxLength: 80 },
     year: { type: 'integer', minimum: 1980, maximum: 2100 },
@@ -667,6 +660,19 @@ const schemas = {
   VehicleRelease: schemaObject({
     releasedAt: dateTimeString,
     remarks: { type: 'string', maxLength: 300 },
+  }),
+  VehicleTypeCreate: schemaObject(
+    {
+      name: { type: 'string', maxLength: 120, example: 'Tipper' },
+      description: { type: 'string', maxLength: 500, example: 'Construction tipper trucks' },
+      status: { type: 'string', enum: VEHICLE_TYPE_STATUS, example: 'active' },
+    },
+    ['name']
+  ),
+  VehicleTypeUpdate: schemaObject({
+    name: { type: 'string', maxLength: 120 },
+    description: { type: 'string', maxLength: 500 },
+    status: { type: 'string', enum: VEHICLE_TYPE_STATUS },
   }),
   MaintenanceCategoryCreate: schemaObject(
     {
@@ -959,13 +965,44 @@ const schemas = {
     id: objectId,
     code: { type: 'string', example: 'VEH-0001' },
     registrationNumber: { type: 'string', example: 'UP32 AB 2002' },
-    type: { type: 'string', example: 'Tipper' },
+    vehicleType: namedRef('VehicleType'),
     make: { type: 'string' },
     modelName: { type: 'string' },
     year: { type: 'integer' },
     fuelType: { type: 'string', enum: FUEL_TYPES },
     status: { type: 'string', enum: VEHICLE_STATUS },
-    currentAssignment: { type: 'object', nullable: true },
+    currentAssignment: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        id: objectId,
+        site: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            id: objectId,
+            name: { type: 'string' },
+            code: { type: 'string' },
+            status: { type: 'string' },
+          },
+        },
+        driver: {
+          type: 'object',
+          nullable: true,
+          properties: {
+            id: objectId,
+            fullName: { type: 'string' },
+            code: { type: 'string' },
+            designation: { type: 'string' },
+          },
+        },
+        assignedAt: dateTimeString,
+        releasedAt: { ...dateTimeString, nullable: true },
+        remarks: { type: 'string' },
+        createdAt: dateTimeString,
+        updatedAt: dateTimeString,
+      },
+    },
     odometer: { type: 'number' },
     documents: vehicleDocuments,
     notes: { type: 'string' },
@@ -980,7 +1017,7 @@ const schemas = {
         id: objectId,
         code: { type: 'string' },
         registrationNumber: { type: 'string' },
-        type: { type: 'string' },
+        vehicleType: namedRef('VehicleType'),
         make: { type: 'string' },
         modelName: { type: 'string' },
         status: { type: 'string', enum: VEHICLE_STATUS },
@@ -1011,6 +1048,14 @@ const schemas = {
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
+  VehicleType: modelSchema({
+    id: objectId,
+    name: { type: 'string', example: 'Tipper' },
+    description: { type: 'string' },
+    status: { type: 'string', enum: VEHICLE_TYPE_STATUS },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
   MaintenanceCategory: modelSchema({
     id: objectId,
     name: { type: 'string' },
@@ -1027,7 +1072,7 @@ const schemas = {
         id: objectId,
         code: { type: 'string' },
         registrationNumber: { type: 'string' },
-        type: { type: 'string' },
+        vehicleType: namedRef('VehicleType'),
         make: { type: 'string' },
         modelName: { type: 'string' },
         status: { type: 'string' },
@@ -1176,7 +1221,6 @@ const schemas = {
   Attendance: modelSchema({
     id: objectId,
     employee: { type: 'object' },
-    project: namedRef('NamedRef'),
     site: namedRef('NamedRef'),
     attendanceDate: dateString,
     status: { type: 'string', enum: ATTENDANCE_STATUS },
@@ -1739,23 +1783,53 @@ const spec = {
         parameters: [
           ...paging,
           query('status', { type: 'string', enum: VEHICLE_STATUS }),
-          query('type', { type: 'string' }),
+          query('vehicleTypeId', objectId),
           query('siteId', objectId),
         ],
         data: 'Vehicle',
         list: true,
       }),
-      post: operation('Vehicles', 'Create a vehicle, and assign it when siteId is sent', {
+      post: operation('Vehicles', 'Create a vehicle', {
         status: '201',
         data: 'Vehicle',
         body: jsonBody(ref('VehicleCreate'), {
           registrationNumber: 'UP32 AB 2002',
-          type: 'Tipper',
+          vehicleTypeId: '64b0c0c0c0c0c0c0c0c0c0c0',
           fuelType: 'diesel',
           odometer: 12000,
-          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
         }),
       }),
+    },
+    '/vehicles/types': {
+      get: operation('Vehicles', 'List vehicle types', {
+        parameters: [...paging, query('status', { type: 'string', enum: VEHICLE_TYPE_STATUS })],
+        data: 'VehicleType',
+        list: true,
+      }),
+      post: operation('Vehicles', 'Create a vehicle type', {
+        status: '201',
+        data: 'VehicleType',
+        body: jsonBody(ref('VehicleTypeCreate'), {
+          name: 'Tipper',
+          description: 'Construction tipper trucks',
+          status: 'active',
+        }),
+      }),
+    },
+    '/vehicles/types/{id}': {
+      get: operation('Vehicles', 'Get a vehicle type', {
+        parameters: [pathParam()],
+        data: 'VehicleType',
+      }),
+      patch: operation('Vehicles', 'Update a vehicle type', {
+        parameters: [pathParam()],
+        data: 'VehicleType',
+        body: jsonBody(ref('VehicleTypeUpdate'), {
+          description: 'Heavy tipper trucks',
+          status: 'inactive',
+        }),
+      }),
+      delete: operation('Vehicles', 'Delete a vehicle type', { parameters: [pathParam()] }),
     },
     '/vehicles/maintenance-categories': {
       get: operation('Vehicles', 'List maintenance categories', {

@@ -20,7 +20,7 @@ const movementSchema = new mongoose.Schema(
     project: { type: mongoose.Schema.Types.ObjectId, ref: 'Project' },
     site: { type: mongoose.Schema.Types.ObjectId, ref: 'Site' },
     employee: { type: mongoose.Schema.Types.ObjectId, ref: 'Employee', index: true },
-    vehicleType: { type: mongoose.Schema.Types.ObjectId, index: true },
+    vehicleType: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleType', index: true },
     unitCost: { type: Number, min: 0 },
     totalAmount: { type: Number, min: 0, default: 0 },
     vendorName: { type: String, trim: true, maxlength: 120, default: '' },
