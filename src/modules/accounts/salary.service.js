@@ -16,13 +16,16 @@ const POPULATE = [
   { path: 'site', select: 'name code' },
 ];
 
-function withLinks(query) {
-  return query.populate(POPULATE);
+async function presentDoc(doc) {
+  if (!doc) throw new AppError('Salary record not found', 404, 'NOT_FOUND');
+  await doc.populate(POPULATE);
+  return doc;
 }
 
 async function present(id) {
-  const doc = await withLinks(SalaryRecord.findById(id));
+  const doc = await SalaryRecord.findById(id).populate(POPULATE).lean({ virtuals: true });
   if (!doc) throw new AppError('Salary record not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
   return doc;
 }
 
@@ -42,8 +45,11 @@ function applyTotals(doc, totals) {
 }
 
 async function create(body, user) {
-  const employee = await requireDoc(Employee, body.employeeId, 'Employee');
-  const links = await resolveProjectSite(body.projectId, body.siteId);
+  const [employee, links, code] = await Promise.all([
+    requireDoc(Employee, body.employeeId, 'Employee'),
+    resolveProjectSite(body.projectId, body.siteId),
+    nextCode('salary', 'SAL'),
+  ]);
   const baseAmount = body.baseAmount !== undefined ? body.baseAmount : employee.salary.baseAmount;
   if (baseAmount === undefined || baseAmount === null) {
     throw new AppError('Base salary is required', 400, 'BAD_REQUEST');
@@ -57,7 +63,7 @@ async function create(body, user) {
   });
 
   const doc = await SalaryRecord.create({
-    code: await nextCode('salary', 'SAL'),
+    code,
     employee: employee._id,
     project: links.projectId,
     site: links.site ? links.site._id : undefined,
@@ -71,7 +77,7 @@ async function create(body, user) {
     ...totals,
   });
 
-  return present(doc.id);
+  return presentDoc(doc);
 }
 
 async function list(query) {
@@ -90,6 +96,7 @@ async function list(query) {
     limit: query.limit,
     sort: parseSort(query.sort, SORT_FIELDS, { periodYear: -1, periodMonth: -1 }),
     populate: POPULATE,
+    lean: true,
   });
 }
 
@@ -128,7 +135,7 @@ async function update(id, body) {
   if (body.recordStatus) doc.recordStatus = body.recordStatus;
   if (body.remarks !== undefined) doc.remarks = body.remarks;
   await doc.save();
-  return present(doc.id);
+  return presentDoc(doc);
 }
 
 async function voidRecord(id, body) {
@@ -138,7 +145,7 @@ async function voidRecord(id, body) {
   doc.voidReason = body.reason;
   doc.voidedAt = new Date();
   await doc.save();
-  return present(doc.id);
+  return presentDoc(doc);
 }
 
 module.exports = { create, list, getById, update, voidRecord };

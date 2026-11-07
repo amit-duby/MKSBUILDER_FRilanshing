@@ -35,8 +35,11 @@ const EMPTY_TOTALS = {
   overtimeHours: 0,
 };
 
-function present(id) {
-  return Attendance.findById(id).populate(POPULATE);
+async function present(id) {
+  const doc = await Attendance.findById(id).populate(POPULATE).lean({ virtuals: true });
+  if (!doc) return null;
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
+  return doc;
 }
 
 function publicEmployee(employee) {

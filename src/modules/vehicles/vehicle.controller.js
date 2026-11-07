@@ -37,7 +37,7 @@ const listAssignments = asyncHandler(async (req, res) => {
 });
 
 const addMaintenance = asyncHandler(async (req, res) => {
-  const data = await service.addMaintenance(req.params.id, req.body, req.user);
+  const data = await service.addMaintenance(req.body.vehicleId, req.body, req.user);
   return created(res, data, 'Maintenance logged');
 });
 

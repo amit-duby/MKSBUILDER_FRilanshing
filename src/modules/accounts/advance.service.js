@@ -19,9 +19,16 @@ function monthlySalaryOf(employee) {
   return roundMoney(Number(base) || 0);
 }
 
-async function present(id) {
-  const doc = await Advance.findById(id).populate(POPULATE);
+async function presentDoc(doc) {
   if (!doc) throw new AppError('Advance request not found', 404, 'NOT_FOUND');
+  await doc.populate(POPULATE);
+  return presentAdvance(doc);
+}
+
+async function present(id) {
+  const doc = await Advance.findById(id).populate(POPULATE).lean({ virtuals: true });
+  if (!doc) throw new AppError('Advance request not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
   return presentAdvance(doc);
 }
 

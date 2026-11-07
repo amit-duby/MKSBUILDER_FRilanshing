@@ -20,13 +20,16 @@ const POPULATE = [
   { path: 'item', select: 'name sku unit' },
 ];
 
-function withLinks(query) {
-  return query.populate(POPULATE);
+async function presentDoc(doc) {
+  if (!doc) throw new AppError('Expense not found', 404, 'NOT_FOUND');
+  await doc.populate(POPULATE);
+  return doc;
 }
 
 async function present(id) {
-  const doc = await withLinks(Expense.findById(id));
+  const doc = await Expense.findById(id).populate(POPULATE).lean({ virtuals: true });
   if (!doc) throw new AppError('Expense not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
   return doc;
 }
 
@@ -36,19 +39,15 @@ async function buildPayload(body) {
     throw new AppError('Amount must be greater than zero', 400, 'BAD_REQUEST');
   }
 
-  const links = await resolveProjectSite(body.projectId, body.siteId);
-  let payeeName = body.payeeName;
+  const [links, employee, vehicle, item] = await Promise.all([
+    resolveProjectSite(body.projectId, body.siteId),
+    body.employeeId ? requireDoc(Employee, body.employeeId, 'Employee') : null,
+    body.vehicleId ? requireDoc(Vehicle, body.vehicleId, 'Vehicle') : null,
+    body.itemId ? requireDoc(Item, body.itemId, 'Item') : null,
+  ]);
 
-  if (body.employeeId) {
-    const employee = await requireDoc(Employee, body.employeeId, 'Employee');
-    if (!payeeName) payeeName = employee.fullName;
-  }
-  if (body.vehicleId) {
-    await requireDoc(Vehicle, body.vehicleId, 'Vehicle');
-  }
-  if (body.itemId) {
-    await requireDoc(Item, body.itemId, 'Item');
-  }
+  let payeeName = body.payeeName;
+  if (employee && !payeeName) payeeName = employee.fullName;
   if (!payeeName) {
     throw new AppError('Payee name is required', 400, 'BAD_REQUEST');
   }
@@ -70,14 +69,17 @@ async function buildPayload(body) {
 }
 
 async function create(body, user) {
-  const payload = await buildPayload(body);
+  const [payload, code] = await Promise.all([
+    buildPayload(body),
+    nextCode('expense', 'EXP'),
+  ]);
   const doc = await Expense.create({
     ...payload,
-    code: await nextCode('expense', 'EXP'),
+    code,
     createdBy: user && user.id,
     isVoid: false,
   });
-  return present(doc.id);
+  return presentDoc(doc);
 }
 
 async function list(query) {
@@ -105,6 +107,7 @@ async function list(query) {
     limit: query.limit,
     sort: parseSort(query.sort, SORT_FIELDS, { expenseDate: -1 }),
     populate: POPULATE,
+    lean: true,
   });
 }
 
@@ -134,7 +137,7 @@ async function update(id, body) {
   const payload = await buildPayload(merged);
   Object.assign(existing, payload);
   await existing.save();
-  return present(existing.id);
+  return presentDoc(existing);
 }
 
 async function voidRecord(id, body) {
@@ -144,7 +147,7 @@ async function voidRecord(id, body) {
   doc.voidReason = body.reason;
   doc.voidedAt = new Date();
   await doc.save();
-  return present(doc.id);
+  return presentDoc(doc);
 }
 
 module.exports = { create, list, getById, update, voidRecord };

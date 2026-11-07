@@ -311,7 +311,10 @@ const service = {
       notes: body.notes || '',
     });
     await unsetLegacyType(vehicle._id);
-    return present(vehicle.id);
+    const json = vehicle.toJSON();
+    json.vehicleType = presentVehicleType(vehicleType);
+    json.currentAssignment = null;
+    return json;
   },
 
   async list(query) {
@@ -350,6 +353,7 @@ const service = {
 
   async update(id, body) {
     const doc = await getMutable(id);
+    let vehicleType;
     if (body.status && body.status !== doc.status) {
       if (doc.status === 'assigned' || doc.status === 'maintenance') {
         throw new AppError('Release the vehicle or complete maintenance before changing status', 409, 'CONFLICT');
@@ -359,15 +363,22 @@ const service = {
 
     if (body.registrationNumber) doc.registrationNumber = body.registrationNumber;
     if (body.vehicleTypeId) {
-      const vehicleType = await assertVehicleType(body.vehicleTypeId);
+      vehicleType = await assertVehicleType(body.vehicleTypeId);
       doc.vehicleType = vehicleType._id;
     }
     assignDefined(doc, body, ['make', 'modelName', 'year', 'fuelType', 'notes']);
     if (body.odometer !== undefined) assertOdometer(doc, body.odometer);
     applyDocuments(doc, body.documents);
     await doc.save();
-    await unsetLegacyType(doc._id);
-    return present(doc.id);
+    const [, assignment] = await Promise.all([
+      unsetLegacyType(doc._id),
+      loadCurrentAssignment(doc),
+      vehicleType ? Promise.resolve(null) : doc.populate(VEHICLE_TYPE_POPULATE),
+    ]);
+    const json = doc.toJSON();
+    json.vehicleType = presentVehicleType(vehicleType || doc.vehicleType);
+    json.currentAssignment = presentAssignmentDetail(assignment);
+    return json;
   },
 
   async remove(id) {
@@ -576,8 +587,8 @@ const service = {
         nextDueDate: body.nextDueDate,
         expense: expense && expense._id,
       });
-      vehicle.status = 'maintenance';
-      await vehicle.save();
+      // Status-only update avoids re-validating legacy vehicles missing vehicleType.
+      await Vehicle.updateOne({ _id: vehicle._id }, { $set: { status: 'maintenance' } });
       return log.populate('maintenanceCategory', 'name description status');
     } catch (error) {
       await voidExpense(expense);
@@ -586,7 +597,6 @@ const service = {
   },
 
   async listAllMaintenance(query) {
-    console.log('listAllMaintenance query', query);
     const filter = {};
     if (query.vehicleId) filter.vehicle = query.vehicleId;
     if (query.maintenanceCategoryId) filter.maintenanceCategory = query.maintenanceCategoryId;
@@ -600,20 +610,15 @@ const service = {
       filter.$or = [{ paidTo: pattern }, { reference: pattern }, { description: pattern }];
     }
 
-    console.log('listAllMaintenance filter', filter);
     const result = await new BaseRepository(Maintenance).paginate({
       filter,
       page: query.page,
       limit: query.limit,
       sort: parseSort(query.sort, MAINTENANCE_SORT, { date: -1 }),
       populate: MAINTENANCE_POPULATE,
+      lean: true,
     });
     result.items = await presentMaintenanceList(result.items);
-    // console.log('listAllMaintenance result', JSON.stringify({
-    //   count: result.items.length,
-    //   meta: result.meta,
-    //   items: result.items,
-    // }, null, 2));
     return result;
   },
 
@@ -701,8 +706,7 @@ const service = {
     });
 
     if (!stillOpen && vehicle.status === 'maintenance') {
-      vehicle.status = 'available';
-      await vehicle.save();
+      await Vehicle.updateOne({ _id: vehicle._id }, { $set: { status: 'available' } });
     }
 
     return log;

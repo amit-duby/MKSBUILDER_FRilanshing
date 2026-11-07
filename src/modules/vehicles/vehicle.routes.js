@@ -13,6 +13,12 @@ router.use('/maintenance-categories', maintenanceCategoryRoutes);
 router.get('/alerts', validate(schema.alerts), controller.alerts);
 router.get('/assignments', validate(schema.listAllAssignments), controller.listAllAssignments);
 router.get('/maintenance', validate(schema.listAllMaintenance), controller.listAllMaintenance);
+router.post(
+  '/maintenance/create',
+  maintenanceUpload,
+  validate(schema.maintenance),
+  controller.addMaintenance
+);
 router.patch(
   '/maintenance/:maintenanceId',
   maintenanceUpload,
@@ -25,12 +31,6 @@ router.get('/:id/assignments', validate(schema.pagedChild), controller.listAssig
 router.post('/:id/assign', validate(schema.assign), controller.assign);
 router.post('/:id/release', validate(schema.release), controller.release);
 router.get('/:id/maintenance', validate(schema.pagedChild), controller.listMaintenance);
-router.post(
-  '/:id/maintenance',
-  maintenanceUpload,
-  validate(schema.maintenance),
-  controller.addMaintenance
-);
 router.patch(
   '/:id/maintenance/:maintenanceId',
   maintenanceUpload,

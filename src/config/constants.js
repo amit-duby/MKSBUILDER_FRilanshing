@@ -61,6 +61,7 @@ const COLLECTIONS = {
   employeeAdvances: 'employee_advances',
   impressAmounts: 'impress_amounts',
   localAmounts: 'local_amounts',
+  projectDetails: 'project_details',
   attendance: 'attendance_records',
   counters: 'counters',
 };

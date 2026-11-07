@@ -20,8 +20,12 @@ const POPULATE = [
 ];
 
 async function getActive(id) {
-  const doc = await Employee.findById(id).populate(POPULATE);
+  const doc = await Employee.findById(id).populate(POPULATE).lean({ virtuals: true });
   if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
+  if (doc.department && doc.department._id && doc.department.id == null) {
+    doc.department.id = String(doc.department._id);
+  }
   return doc;
 }
 
@@ -248,23 +252,26 @@ async function currentAssignments(employeeId) {
 }
 
 async function getById(id) {
-  // Parallel: employee+department and assignments (same employee id known from params)
   const [doc, assignments] = await Promise.all([
-    Employee.findById(id).populate(POPULATE),
+    Employee.findById(id).populate(POPULATE).lean({ virtuals: true }),
     loadCurrentAssignments([id]),
   ]);
   if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
-  const json = doc.toJSON();
-  json.currentAssignments = assignments.get(String(id)) || [];
-  return json;
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
+  if (doc.department && doc.department._id && doc.department.id == null) {
+    doc.department.id = String(doc.department._id);
+  }
+  doc.currentAssignments = assignments.get(String(id)) || [];
+  return doc;
 }
 
 async function update(id, body) {
   const doc = await Employee.findById(id);
   if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
 
+  let department;
   if (body.departmentId) {
-    await assertDepartment(body.departmentId);
+    department = await assertDepartment(body.departmentId);
     doc.department = body.departmentId;
   }
 
@@ -329,10 +336,11 @@ async function update(id, body) {
 
   await doc.save();
   const [, assignmentMap] = await Promise.all([
-    doc.populate(POPULATE),
+    department ? Promise.resolve(null) : doc.populate(POPULATE),
     loadCurrentAssignments([doc._id]),
   ]);
   const json = doc.toJSON();
+  if (department) json.department = presentDepartment(department);
   json.currentAssignments = assignmentMap.get(String(doc.id)) || [];
   return json;
 }
@@ -368,12 +376,14 @@ async function release(employeeId, assignmentId, body) {
 }
 
 async function listAssignments(employeeId, query) {
-  await getActive(employeeId);
+  const exists = await Employee.exists({ _id: employeeId });
+  if (!exists) throw new AppError('Employee not found', 404, 'NOT_FOUND');
   const filter = { employee: employeeId };
   if (query.current !== undefined) filter.isCurrent = query.current;
   return Assignment.find(filter)
     .populate('site', 'name code status project')
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .lean({ virtuals: true });
 }
 
 module.exports = {

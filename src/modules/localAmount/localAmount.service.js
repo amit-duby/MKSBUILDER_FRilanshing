@@ -26,9 +26,29 @@ const POPULATE = [
   },
 ];
 
+function present(doc, impressAmount) {
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
+  if (impressAmount) {
+    const impress = typeof impressAmount.toJSON === 'function'
+      ? impressAmount.toJSON()
+      : impressAmount;
+    json.impressAmount = {
+      id: impress.id || String(impress._id),
+      code: impress.code,
+      date: impress.date,
+      givenTo: impress.givenTo,
+      note: impress.note,
+      employee: impress.employee,
+      site: impress.site,
+    };
+  }
+  return json;
+}
+
 async function getActive(id) {
-  const doc = await LocalAmount.findById(id).populate(POPULATE);
+  const doc = await LocalAmount.findById(id).populate(POPULATE).lean({ virtuals: true });
   if (!doc) throw new AppError('Local amount not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
   return doc;
 }
 
@@ -52,7 +72,7 @@ async function create(body) {
     uploadReceipt: body.uploadReceipt || null,
   });
 
-  return getActive(doc.id);
+  return present(doc, impressAmount);
 }
 
 async function list(query) {
@@ -75,6 +95,7 @@ async function list(query) {
     limit: query.limit,
     sort: parseSort(query.sort, SORT_FIELDS, { date: -1 }),
     populate: POPULATE,
+    lean: true,
   });
 }
 
@@ -86,9 +107,10 @@ async function update(id, body) {
   const doc = await LocalAmount.findById(id);
   if (!doc) throw new AppError('Local amount not found', 404, 'NOT_FOUND');
 
+  let impressAmount;
   if (body.impressAmountId) {
-    await assertImpressAmount(body.impressAmountId);
-    doc.impressAmount = body.impressAmountId;
+    impressAmount = await assertImpressAmount(body.impressAmountId);
+    doc.impressAmount = impressAmount._id;
   }
   if (body.date) doc.date = startOfBusinessDay(body.date);
 
@@ -108,11 +130,11 @@ async function update(id, body) {
     removeStoredLocalReceipt(previousReceipt);
   }
 
-  return getActive(doc.id);
+  return present(doc, impressAmount);
 }
 
 async function remove(id) {
-  const doc = await LocalAmount.findById(id);
+  const doc = await LocalAmount.findById(id).select('uploadReceipt');
   if (!doc) throw new AppError('Local amount not found', 404, 'NOT_FOUND');
   removeStoredLocalReceipt(doc.uploadReceipt);
   await doc.deleteOne();

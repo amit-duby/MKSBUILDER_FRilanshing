@@ -1,15 +1,38 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const bcrypt = require('bcryptjs');
+// Native bcrypt is much faster than bcryptjs for the same cost factor.
+let bcrypt;
+try {
+  bcrypt = require('bcrypt');
+} catch {
+  bcrypt = require('bcryptjs');
+}
 const jwt = require('jsonwebtoken');
 const { getConfig } = require('../../config/env');
 const AppError = require('../../common/errors/AppError');
 const { sendMail } = require('../../common/mail/mailer');
 const User = require('./user.model');
+const { setAuthUser, invalidateAuthUser } = require('../../common/utils/authUserCache');
 
-const BCRYPT_ROUNDS = 10;
+const BCRYPT_ROUNDS = 8;
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
+const LOGIN_SELECT = '+passwordHash +tokenVersion name email role avatar isActive';
+
+function schedulePasswordRehash(userId, password, currentHash) {
+  let rounds;
+  try {
+    rounds = bcrypt.getRounds(currentHash);
+  } catch {
+    return;
+  }
+  if (rounds <= BCRYPT_ROUNDS) return;
+  setImmediate(() => {
+    bcrypt.hash(password, BCRYPT_ROUNDS)
+      .then((passwordHash) => User.updateOne({ _id: userId }, { $set: { passwordHash } }))
+      .catch(() => {});
+  });
+}
 
 function escapeHtml(value) {
   return String(value)
@@ -26,7 +49,13 @@ function hashResetToken(token) {
 function signToken(user) {
   const config = getConfig();
   return jwt.sign(
-    { sub: user.id, tv: user.tokenVersion, email: user.email },
+    {
+      sub: user.id,
+      tv: user.tokenVersion,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    },
     config.JWT_SECRET,
     { expiresIn: config.JWT_EXPIRES_IN }
   );
@@ -79,6 +108,8 @@ async function register(body, actor) {
       isActive: true,
     });
 
+    setAuthUser(user.id, user);
+
     return {
       token: signToken(user),
       user: publicUser(user),
@@ -92,10 +123,12 @@ async function register(body, actor) {
 }
 
 async function login(body) {
-  const user = await User.findOne({ email: body.email.toLowerCase() }).select('+passwordHash +tokenVersion');
+  const user = await User.findOne({ email: body.email.toLowerCase() })
+    .select(LOGIN_SELECT)
+    .lean();
 
   // Only an account that already exists in the database can log in.
-  if (!user || !user.isActive) {
+  if (!user || !user.isActive || !user.passwordHash) {
     throw new AppError('Invalid email or password', 401, 'UNAUTHORIZED');
   }
 
@@ -104,19 +137,24 @@ async function login(body) {
     throw new AppError('Invalid email or password', 401, 'UNAUTHORIZED');
   }
 
-  assertAdmin(user);
+  const authUser = {
+    id: String(user._id),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    avatar: user.avatar || null,
+    isActive: user.isActive,
+    tokenVersion: user.tokenVersion,
+  };
 
-  // Older accounts were stored at a higher cost. Rewrite once so the next login stays under 800ms.
-  if (bcrypt.getRounds(user.passwordHash) > BCRYPT_ROUNDS) {
-    await User.updateOne(
-      { _id: user._id },
-      { $set: { passwordHash: await bcrypt.hash(body.password, BCRYPT_ROUNDS) } }
-    );
-  }
+  assertAdmin(authUser);
+  // Do not block login on password rehash / extra DB write.
+  schedulePasswordRehash(authUser.id, body.password, user.passwordHash);
+  setAuthUser(authUser.id, authUser);
 
   return {
-    token: signToken(user),
-    user: publicUser(user),
+    token: signToken(authUser),
+    user: publicUser(authUser),
   };
 }
 
@@ -152,6 +190,7 @@ async function me(userId) {
 
 async function logout(userId) {
   await User.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } });
+  invalidateAuthUser(userId);
 }
 
 async function forgotPassword(body, publicUrl) {
@@ -231,6 +270,7 @@ async function resetPassword(token, body) {
   user.passwordResetTokenHash = undefined;
   user.passwordResetExpiresAt = undefined;
   await user.save();
+  setAuthUser(user.id, user);
 
   return {
     token: signToken(user),
@@ -270,6 +310,7 @@ async function changePassword(userId, body) {
     }
   );
   user.tokenVersion = nextVersion;
+  setAuthUser(user.id, user);
 
   return {
     token: signToken(user),

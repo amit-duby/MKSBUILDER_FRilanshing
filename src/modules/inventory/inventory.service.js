@@ -281,9 +281,9 @@ const items = {
     const doc = await getItem(id);
     if (body.sku) doc.sku = body.sku.toUpperCase();
     assignDefined(doc, body, ['name', 'category', 'unit', 'reorderLevel', 'description', 'isActive']);
-    await doc.save();
+    const [, onHandQty] = await Promise.all([doc.save(), onHand(doc._id)]);
     const json = doc.toJSON();
-    json.onHand = await onHand(doc._id);
+    json.onHand = onHandQty;
     return json;
   },
 
@@ -297,8 +297,10 @@ const items = {
 };
 
 async function getLocation(id) {
-  const doc = await Location.findById(id).populate('site', 'name code status');
+  const doc = await Location.findById(id).populate('site', 'name code status').lean({ virtuals: true });
   if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
+  if (doc.site && doc.site._id && doc.site.id == null) doc.site.id = String(doc.site._id);
   return doc;
 }
 
@@ -365,7 +367,8 @@ const locations = {
     assignDefined(doc, body, ['name', 'isActive']);
     await doc.save();
     if (!doc.site) return doc;
-    return getLocation(doc.id);
+    await doc.populate('site', 'name code status');
+    return doc;
   },
 
   async remove(id) {
@@ -1109,7 +1112,7 @@ const movements = {
   },
 
   async getById(id, options = {}) {
-    const doc = await Movement.findById(id).populate(MOVEMENT_POPULATE);
+    const doc = await Movement.findById(id).populate(MOVEMENT_POPULATE).lean({ virtuals: true });
     if (!doc) throw new AppError('Stock movement not found', 404, 'NOT_FOUND');
     if (options.expectType && doc.type !== options.expectType) {
       throw new AppError('Stock issue not found', 404, 'NOT_FOUND');

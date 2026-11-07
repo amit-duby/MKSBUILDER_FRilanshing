@@ -21,18 +21,41 @@ const POPULATE = [
   { path: 'incharge', select: 'fullName code designation status' },
 ];
 
+function briefRef(doc, fields) {
+  if (!doc) return null;
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+  const out = { id: json.id || String(json._id) };
+  for (const field of fields) {
+    if (json[field] !== undefined) out[field] = json[field];
+  }
+  return out;
+}
+
+function present(doc, project, incharge) {
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
+  if (project) json.project = briefRef(project, ['name', 'code', 'status']);
+  if (incharge !== undefined) {
+    json.incharge = incharge
+      ? briefRef(incharge, ['fullName', 'code', 'designation', 'status'])
+      : null;
+  }
+  return json;
+}
+
 async function getActive(id) {
-  const doc = await Site.findById(id).populate(POPULATE);
+  const doc = await Site.findById(id).populate(POPULATE).lean({ virtuals: true });
   if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
   return doc;
 }
 
 async function assertIncharge(inchargeId) {
-  if (!inchargeId) return;
+  if (!inchargeId) return null;
   const employee = await requireDoc(Employee, inchargeId, 'Employee');
   if (employee.status !== 'active') {
     throw new AppError('Site incharge must be an active employee', 400, 'BAD_REQUEST');
   }
+  return employee;
 }
 
 function assertDates(doc) {
@@ -42,15 +65,19 @@ function assertDates(doc) {
 }
 
 async function create(body) {
-  const project = await requireDoc(Project, body.projectId, 'Project');
+  const [project, incharge, code] = await Promise.all([
+    requireDoc(Project, body.projectId, 'Project'),
+    assertIncharge(body.inchargeId),
+    nextCode('site', 'STE'),
+  ]);
+
   if (project.status === 'completed' || project.status === 'cancelled') {
     throw new AppError('Cannot add a site to a completed or cancelled project', 400, 'BAD_REQUEST');
   }
-  await assertIncharge(body.inchargeId);
 
   const site = await repo.create({
     project: project._id,
-    code: await nextCode('site', 'STE'),
+    code,
     name: body.name,
     address: body.address || '',
     city: body.city || '',
@@ -77,7 +104,7 @@ async function create(body) {
     throw error;
   }
 
-  return getActive(site.id);
+  return present(site, project, incharge);
 }
 
 async function list(query) {
@@ -95,10 +122,11 @@ async function list(query) {
     limit: query.limit,
     sort: parseSort(query.sort, SORT_FIELDS),
     populate: POPULATE,
+    lean: true,
   });
 }
 
-async function getById(id) {
+function getById(id) {
   return getActive(id);
 }
 
@@ -106,8 +134,9 @@ async function update(id, body) {
   const doc = await Site.findById(id);
   if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
 
+  let incharge;
   if (Object.prototype.hasOwnProperty.call(body, 'inchargeId')) {
-    if (body.inchargeId) await assertIncharge(body.inchargeId);
+    incharge = body.inchargeId ? await assertIncharge(body.inchargeId) : null;
     doc.incharge = body.inchargeId || undefined;
   }
 
@@ -132,7 +161,7 @@ async function update(id, body) {
     );
   }
 
-  return getActive(doc.id);
+  return present(doc, undefined, incharge);
 }
 
 async function assertStockClear(siteId) {
@@ -147,7 +176,7 @@ async function assertStockClear(siteId) {
 }
 
 async function remove(id) {
-  const doc = await Site.findById(id);
+  const doc = await Site.findById(id).select('_id');
   if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
 
   const location = await assertStockClear(doc._id);

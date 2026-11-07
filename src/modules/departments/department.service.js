@@ -14,15 +14,6 @@ async function getActive(id) {
   return doc;
 }
 
-async function withHeadcount(doc) {
-  const json = doc.toJSON();
-  json.activeEmployeeCount = await Employee.countDocuments({
-    department: doc._id,
-    status: 'active',
-  });
-  return json;
-}
-
 async function create(body) {
   return repo.create({
     code: await nextCode('department', 'DEP'),
@@ -48,7 +39,14 @@ async function list(query) {
 }
 
 async function getById(id) {
-  return withHeadcount(await getActive(id));
+  const [doc, activeEmployeeCount] = await Promise.all([
+    Department.findById(id).lean({ virtuals: true }),
+    Employee.countDocuments({ department: id, status: 'active' }),
+  ]);
+  if (!doc) throw new AppError('Department not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
+  doc.activeEmployeeCount = activeEmployeeCount;
+  return doc;
 }
 
 async function update(id, body) {
@@ -74,8 +72,10 @@ async function update(id, body) {
 }
 
 async function remove(id) {
-  const doc = await getActive(id);
-  const inUse = await Employee.exists({ department: doc._id });
+  const [doc, inUse] = await Promise.all([
+    getActive(id),
+    Employee.exists({ department: id }),
+  ]);
   if (inUse) {
     throw new AppError('Reassign employees before deleting this department', 409, 'CONFLICT');
   }

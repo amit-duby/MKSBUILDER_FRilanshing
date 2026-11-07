@@ -15,6 +15,16 @@ function prefixUploadUrls(value, base, seen = new WeakSet()) {
   if (Array.isArray(value)) {
     return value.map((item) => prefixUploadUrls(item, base, seen));
   }
+  // Mongoose docs are not plain objects; convert so /uploads paths get absolutized.
+  if (
+    value
+    && typeof value === 'object'
+    && typeof value.toJSON === 'function'
+    && !isPlainObject(value)
+    && !(value instanceof Date)
+  ) {
+    return prefixUploadUrls(value.toJSON(), base, seen);
+  }
   if (!isPlainObject(value)) return value;
   if (seen.has(value)) return value;
   seen.add(value);

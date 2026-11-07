@@ -65,8 +65,14 @@ function coerceLocalAmountFields(body) {
   }
 }
 
+function pickReceiptFile(files) {
+  if (!Array.isArray(files) || files.length === 0) return null;
+  const aliases = new Set(['uploadreceipt', 'receipt', 'file', 'image', 'photo']);
+  return files.find((file) => aliases.has(fieldKey(file.fieldname))) || null;
+}
+
 function localAmountUpload(req, res, next) {
-  upload.single('uploadReceipt')(req, res, (error) => {
+  upload.any()(req, res, (error) => {
     if (error) {
       if (error instanceof AppError) return next(error);
       if (error.code === 'LIMIT_FILE_SIZE') {
@@ -74,7 +80,8 @@ function localAmountUpload(req, res, next) {
       }
       return next(new AppError('Receipt upload failed', 400, 'BAD_REQUEST'));
     }
-    if (req.file) req.body.uploadReceipt = `/uploads/local-amounts/${req.file.filename}`;
+    const file = pickReceiptFile(req.files);
+    if (file) req.body.uploadReceipt = `/uploads/local-amounts/${file.filename}`;
     coerceLocalAmountFields(req.body);
     return next();
   });

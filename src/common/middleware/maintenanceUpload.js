@@ -38,6 +38,8 @@ const upload = multer({
 });
 
 const FIELD_ALIASES = {
+  vehicleid: 'vehicleId',
+  vehicle: 'vehicleId',
   maintenancecategoryid: 'maintenanceCategoryId',
   maintenancecategory: 'maintenanceCategoryId',
   categoryid: 'maintenanceCategoryId',

@@ -54,6 +54,13 @@ async function getActive(id) {
   return doc;
 }
 
+async function getActiveLean(id) {
+  const doc = await Project.findById(id).lean({ virtuals: true });
+  if (!doc) throw new AppError('Project not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
+  return doc;
+}
+
 function assertDates(doc) {
   if (doc.expectedEndDate && doc.startDate && doc.expectedEndDate < doc.startDate) {
     throw new AppError('Expected end date must be on or after the start date', 400, 'BAD_REQUEST');
@@ -129,7 +136,7 @@ async function list(query) {
 }
 
 async function getById(id) {
-  return withClientPending(await getActive(id));
+  return withClientPending(await getActiveLean(id));
 }
 
 async function update(id, body) {
@@ -248,7 +255,7 @@ async function summary(id) {
   }
   const projectId = new mongoose.Types.ObjectId(id);
   const [project, stats] = await Promise.all([
-    getActive(id),
+    getActiveLean(id),
     summaryStats(projectId),
   ]);
 

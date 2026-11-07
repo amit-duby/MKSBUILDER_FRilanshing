@@ -20,9 +20,27 @@ const POPULATE = [
   { path: 'site', select: 'name code status' },
 ];
 
+function briefRef(doc, fields) {
+  if (!doc) return null;
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
+  const out = { id: json.id || String(json._id) };
+  for (const field of fields) {
+    if (json[field] !== undefined) out[field] = json[field];
+  }
+  return out;
+}
+
+function present(doc, employee, site) {
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
+  if (employee) json.employee = briefRef(employee, ['code', 'fullName', 'designation', 'status']);
+  if (site) json.site = briefRef(site, ['name', 'code', 'status']);
+  return json;
+}
+
 async function getActive(id) {
-  const doc = await ImpressAmount.findById(id).populate(POPULATE);
+  const doc = await ImpressAmount.findById(id).populate(POPULATE).lean({ virtuals: true });
   if (!doc) throw new AppError('Impress amount not found', 404, 'NOT_FOUND');
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
   return doc;
 }
 
@@ -50,7 +68,7 @@ async function create(body) {
     note: body.note || '',
   });
 
-  return getActive(doc.id);
+  return present(doc, employee, site);
 }
 
 async function list(query) {
@@ -73,6 +91,7 @@ async function list(query) {
     limit: query.limit,
     sort: parseSort(query.sort, SORT_FIELDS, { date: -1 }),
     populate: POPULATE,
+    lean: true,
   });
 }
 
@@ -84,22 +103,26 @@ async function update(id, body) {
   const doc = await ImpressAmount.findById(id);
   if (!doc) throw new AppError('Impress amount not found', 404, 'NOT_FOUND');
 
-  if (body.employeeId) {
-    await assertEmployee(body.employeeId);
-    doc.employee = body.employeeId;
-  }
-  if (body.siteId) {
-    await assertSite(body.siteId);
-    doc.site = body.siteId;
-  }
+  const tasks = [];
+  if (body.employeeId) tasks.push(assertEmployee(body.employeeId).then((employee) => {
+    doc.employee = employee._id;
+    return ['employee', employee];
+  }));
+  if (body.siteId) tasks.push(assertSite(body.siteId).then((site) => {
+    doc.site = site._id;
+    return ['site', site];
+  }));
+
+  const resolved = Object.fromEntries(await Promise.all(tasks));
   if (body.date) doc.date = startOfBusinessDay(body.date);
   assignDefined(doc, body, ['givenTo', 'note']);
   await doc.save();
-  return getActive(doc.id);
+
+  return present(doc, resolved.employee, resolved.site);
 }
 
 async function remove(id) {
-  const doc = await ImpressAmount.findById(id);
+  const doc = await ImpressAmount.findById(id).select('_id');
   if (!doc) throw new AppError('Impress amount not found', 404, 'NOT_FOUND');
   await doc.deleteOne();
 }

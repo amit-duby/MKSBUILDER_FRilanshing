@@ -56,11 +56,15 @@ const releaseBody = z.object({
 const maintenanceBody = z.preprocess((value) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
   const body = { ...value };
+  if (!body.vehicleId) {
+    body.vehicleId = body.vehicle;
+  }
   if (!body.maintenanceCategoryId) {
     body.maintenanceCategoryId = body.maintenanceCategory || body.categoryId;
   }
   return body;
 }, z.object({
+  vehicleId: objectId,
   maintenanceCategoryId: objectId,
   paidTo: shortText(120),
   date: dateValue.optional(),
@@ -159,7 +163,7 @@ module.exports = {
   }),
   assign: requestSchema({ params: idParams, body: assignBody }),
   release: requestSchema({ params: idParams, body: releaseBody }),
-  maintenance: requestSchema({ params: idParams, body: maintenanceBody }),
+  maintenance: requestSchema({ body: maintenanceBody }),
   updateMaintenance: requestSchema({ params: maintenanceParams, body: updateMaintenanceBody }),
   updateMaintenanceById: requestSchema({
     params: z.object({ maintenanceId: objectId }),

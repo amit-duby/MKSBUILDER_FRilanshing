@@ -3,6 +3,7 @@ const { getConfig } = require('../../config/env');
 const AppError = require('../errors/AppError');
 const User = require('../../modules/auth/user.model');
 const { assertAdmin } = require('../../modules/auth/auth.service');
+const { getAuthUser, setAuthUser } = require('../utils/authUserCache');
 
 async function authenticate(req, _res, next) {
   const header = req.headers.authorization || '';
@@ -19,12 +20,25 @@ async function authenticate(req, _res, next) {
     throw new AppError('Invalid or expired token', 401, 'UNAUTHORIZED');
   }
 
+  const cached = getAuthUser(payload.sub, payload.tv);
+  if (cached) {
+    assertAdmin(cached);
+    req.user = {
+      id: cached.id,
+      email: cached.email,
+      name: cached.name,
+      role: cached.role,
+    };
+    return next();
+  }
+
   const user = await User.findById(payload.sub).select('+tokenVersion');
   if (!user || !user.isActive || user.tokenVersion !== payload.tv) {
     throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
   }
 
   assertAdmin(user);
+  setAuthUser(user.id, user);
 
   req.user = {
     id: user.id,

@@ -692,6 +692,7 @@ const schemas = {
   }),
   MaintenanceCreate: schemaObject(
     {
+      vehicleId: objectId,
       maintenanceCategoryId: objectId,
       paidTo: { type: 'string', maxLength: 120, example: 'Sharma Motors' },
       date: dateString,
@@ -705,10 +706,11 @@ const schemas = {
       payeeName: { type: 'string', maxLength: 120 },
       paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
     },
-    ['maintenanceCategoryId', 'paidTo', 'amount', 'modeOfPayment']
+    ['vehicleId', 'maintenanceCategoryId', 'paidTo', 'amount', 'modeOfPayment']
   ),
   MaintenanceCreateForm: schemaObject(
     {
+      vehicleId: objectId,
       maintenanceCategoryId: objectId,
       paidTo: { type: 'string', maxLength: 120 },
       date: dateString,
@@ -722,7 +724,7 @@ const schemas = {
       paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
       uploadReceipt: { type: 'string', format: 'binary', description: 'JPEG, PNG, WebP, or PDF up to 5 MB' },
     },
-    ['maintenanceCategoryId', 'paidTo', 'amount', 'modeOfPayment']
+    ['vehicleId', 'maintenanceCategoryId', 'paidTo', 'amount', 'modeOfPayment']
   ),
   MaintenanceUpdate: schemaObject({
     maintenanceCategoryId: objectId,
@@ -889,6 +891,35 @@ const schemas = {
     returnAmount: money,
     paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES },
     uploadReceipt: { type: 'string', format: 'binary', nullable: true },
+  }),
+  ProjectDetailCreate: schemaObject(
+    {
+      projectId: objectId,
+      clientName: { type: 'string', maxLength: 120, example: 'Sharma Builders' },
+      clientPhoneNo: { type: 'string', maxLength: 20, example: '9876543210' },
+      description: { type: 'string', maxLength: 2000, example: 'Commercial tower block A' },
+      status: { type: 'string', enum: PROJECT_STATUS, example: 'planning' },
+      startDate: dateString,
+      actualEndDate: dateString,
+      budgetAmount: { ...money, example: 5000000 },
+      clientAmount: { ...money, example: 2000000 },
+      moneySpend: { ...money, example: 750000 },
+      installmentType: { type: 'string', maxLength: 120, example: 'Monthly' },
+    },
+    ['projectId', 'clientName', 'startDate']
+  ),
+  ProjectDetailUpdate: schemaObject({
+    projectId: objectId,
+    clientName: { type: 'string', maxLength: 120 },
+    clientPhoneNo: { type: 'string', maxLength: 20, nullable: true },
+    description: { type: 'string', maxLength: 2000 },
+    status: { type: 'string', enum: PROJECT_STATUS },
+    startDate: dateString,
+    actualEndDate: { ...dateString, nullable: true },
+    budgetAmount: { ...money, nullable: true },
+    clientAmount: { ...money, nullable: true },
+    moneySpend: { ...money, nullable: true },
+    installmentType: { type: 'string', maxLength: 120, nullable: true },
   }),
 
   // Response / model schemas for frontend
@@ -1349,6 +1380,24 @@ const schemas = {
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
+  ProjectDetail: modelSchema({
+    id: objectId,
+    projectId: objectId,
+    project: namedRef('NamedRef'),
+    clientName: { type: 'string', example: 'Sharma Builders' },
+    clientPhoneNo: { type: 'string', example: '9876543210' },
+    description: { type: 'string' },
+    status: { type: 'string', enum: PROJECT_STATUS },
+    startDate: dateString,
+    actualEndDate: { ...dateString, nullable: true },
+    budgetAmount: money,
+    clientAmount: money,
+    clientPendingAmount: { ...money, nullable: true },
+    moneySpend: money,
+    installmentType: { type: 'string', example: 'Monthly' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
 };
 
 const ref = (name) => namedRef(name);
@@ -1410,6 +1459,7 @@ const spec = {
     { name: 'Accounts' },
     { name: 'ImpressAmounts' },
     { name: 'LocalAmounts' },
+    { name: 'ProjectDetails' },
   ],
   components: {
     securitySchemes: {
@@ -1972,6 +2022,27 @@ const spec = {
         list: true,
       }),
     },
+    '/vehicles/maintenance/create': {
+      post: operation('Vehicles', 'Add a maintenance log', {
+        status: '201',
+        data: 'Maintenance',
+        body: bothBodies(
+          ref('MaintenanceCreate'),
+          {
+            vehicleId: '64b0c0c0c0c0c0c0c0c0c0c0',
+            maintenanceCategoryId: '64b0c0c0c0c0c0c0c0c0c0c0',
+            paidTo: 'Sharma Motors',
+            date: '2026-04-14',
+            amount: 2500,
+            modeOfPayment: 'cash',
+            reference: 'BILL-1024',
+            description: 'Engine oil change',
+            recordExpense: true,
+          },
+          ref('MaintenanceCreateForm')
+        ),
+      }),
+    },
     '/vehicles/maintenance/{maintenanceId}': {
       patch: operation('Vehicles', 'Update a maintenance log', {
         parameters: [pathParam('maintenanceId')],
@@ -2026,25 +2097,6 @@ const spec = {
         parameters: [pathParam(), ...paging],
         data: 'Maintenance',
         list: true,
-      }),
-      post: operation('Vehicles', 'Add a maintenance log', {
-        parameters: [pathParam()],
-        status: '201',
-        data: 'Maintenance',
-        body: bothBodies(
-          ref('MaintenanceCreate'),
-          {
-            maintenanceCategoryId: '64b0c0c0c0c0c0c0c0c0c0c0',
-            paidTo: 'Sharma Motors',
-            date: '2026-04-14',
-            amount: 2500,
-            modeOfPayment: 'cash',
-            reference: 'BILL-1024',
-            description: 'Engine oil change',
-            recordExpense: true,
-          },
-          ref('MaintenanceCreateForm')
-        ),
       }),
     },
     '/vehicles/{id}/maintenance/{maintenanceId}': {
@@ -2327,6 +2379,56 @@ const spec = {
     },
     '/local-amounts/remove/{id}': {
       delete: operation('LocalAmounts', 'Delete a local amount', {
+        parameters: [pathParam()],
+      }),
+    },
+    '/project-details': {
+      get: operation('ProjectDetails', 'List project details', {
+        parameters: [
+          ...paging,
+          query('projectId', objectId),
+          query('status', { type: 'string', enum: PROJECT_STATUS }),
+        ],
+        data: 'ProjectDetail',
+        list: true,
+      }),
+    },
+    '/project-details/create': {
+      post: operation('ProjectDetails', 'Create a project detail', {
+        status: '201',
+        data: 'ProjectDetail',
+        body: jsonBody(ref('ProjectDetailCreate'), {
+          projectId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          clientName: 'Sharma Builders',
+          clientPhoneNo: '9876543210',
+          description: 'Commercial tower block A',
+          status: 'planning',
+          startDate: '2026-04-01',
+          budgetAmount: 5000000,
+          clientAmount: 2000000,
+          moneySpend: 750000,
+        }),
+      }),
+    },
+    '/project-details/get-by-id/{id}': {
+      get: operation('ProjectDetails', 'Get a project detail', {
+        parameters: [pathParam()],
+        data: 'ProjectDetail',
+      }),
+    },
+    '/project-details/update/{id}': {
+      patch: operation('ProjectDetails', 'Update a project detail', {
+        parameters: [pathParam()],
+        data: 'ProjectDetail',
+        body: jsonBody(ref('ProjectDetailUpdate'), {
+          status: 'active',
+          clientAmount: 2500000,
+          moneySpend: 900000,
+        }),
+      }),
+    },
+    '/project-details/remove/{id}': {
+      delete: operation('ProjectDetails', 'Delete a project detail', {
         parameters: [pathParam()],
       }),
     },
