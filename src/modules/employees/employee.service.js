@@ -145,7 +145,7 @@ async function create(body) {
     email: body.email ? body.email.toLowerCase() : undefined,
     address: body.address || '',
     department: body.departmentId,
-    designation: body.designation,
+    designation: body.designation || '',
     category: body.category || '',
     idType: body.idType || '',
     idNumber: body.idNumber || null,

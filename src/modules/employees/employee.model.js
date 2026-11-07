@@ -28,7 +28,7 @@ const employeeSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
-    designation: { type: String, required: true, trim: true, maxlength: 80 },
+    designation: { type: String, trim: true, maxlength: 80, default: '' },
     category: { type: String, trim: true, maxlength: 80, default: '', index: true },
     idType: { type: String, trim: true, maxlength: 40, default: '' },
     idNumber: { type: String, trim: true, maxlength: 40, default: null },

@@ -36,8 +36,8 @@ const identityShape = {
   profilePhoto: photoPath.nullable().optional(),
   idPhotos: z.array(photoPath).max(6).optional(),
   bankName: optionalText(120),
-  accountNumber: accountNumber.optional(),
-  ifscCode: ifscCode.optional(),
+  accountNumber: z.union([accountNumber, z.literal('')]).optional(),
+  ifscCode: z.union([ifscCode, z.literal('')]).optional(),
 };
 
 const salaryShape = {
@@ -65,7 +65,7 @@ const createBody = z.preprocess((value) => {
   email: email.optional(),
   address: optionalText(300),
   departmentId: objectId,
-  designation: shortText(80),
+  designation: optionalText(80),
   category: optionalText(80),
   employmentType: z.enum(EMPLOYMENT_TYPES),
   status: z.enum(['active', 'inactive']).optional(),
@@ -98,7 +98,7 @@ const updateBody = z.object({
   email: email.nullable().optional(),
   address: optionalText(300),
   departmentId: objectId.optional(),
-  designation: shortText(80).optional(),
+  designation: optionalText(80),
   category: optionalText(80),
   employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
   status: z.enum(EMPLOYEE_STATUS).optional(),
@@ -115,8 +115,8 @@ const updateBody = z.object({
   profilePhoto: photoPath.nullable().optional(),
   idPhotos: z.array(photoPath).max(6).optional(),
   bankName: optionalText(120),
-  accountNumber: accountNumber.nullable().optional(),
-  ifscCode: ifscCode.nullable().optional(),
+  accountNumber: z.union([accountNumber, z.literal('')]).nullable().optional(),
+  ifscCode: z.union([ifscCode, z.literal('')]).nullable().optional(),
 });
 
 const assignBody = z.object({

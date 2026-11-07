@@ -427,7 +427,7 @@ const schemas = {
       accountNumber: { type: 'string', pattern: '^[0-9]{9,18}$', example: '123456789012' },
       ifscCode: { type: 'string', example: 'SBIN0001234' },
     },
-    ['fullName', 'departmentId', 'designation', 'employmentType', 'joiningDate', 'salary']
+    ['fullName', 'departmentId', 'employmentType', 'joiningDate', 'salary']
   ),
   EmployeeCreateForm: schemaObject(
     {
@@ -456,7 +456,7 @@ const schemas = {
       profilePhoto: { type: 'string', format: 'binary' },
       idPhotos: { type: 'string', format: 'binary', description: 'Repeat this key for multiple ID photos' },
     },
-    ['fullName', 'departmentId', 'designation', 'employmentType', 'joiningDate']
+    ['fullName', 'departmentId', 'employmentType', 'joiningDate']
   ),
   EmployeeUpdate: schemaObject({
     fullName: { type: 'string', maxLength: 120 },
