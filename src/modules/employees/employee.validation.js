@@ -28,7 +28,7 @@ const accountNumber = z
   .trim()
   .regex(/^[0-9]{9,18}$/, 'Account number must be 9 to 18 digits');
 
-const photoPath = z.string().trim().min(1).max(500);
+const photoPath = z.string().trim().min(1);
 
 const identityShape = {
   idType: optionalText(40),
