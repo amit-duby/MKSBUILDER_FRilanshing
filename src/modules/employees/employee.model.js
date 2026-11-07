@@ -29,6 +29,7 @@ const employeeSchema = new mongoose.Schema(
       index: true,
     },
     designation: { type: String, required: true, trim: true, maxlength: 80 },
+    category: { type: String, trim: true, maxlength: 80, default: '', index: true },
     idType: { type: String, trim: true, maxlength: 40, default: '' },
     idNumber: { type: String, trim: true, maxlength: 40, default: null },
     profilePhoto: { type: String, trim: true, default: null },

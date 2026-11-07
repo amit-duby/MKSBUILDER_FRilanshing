@@ -153,6 +153,14 @@ function publicPath(file) {
 }
 
 function employeeUpload(req, res, next) {
+  const contentType = String(req.headers['content-type'] || '');
+  // JSON create/update: skip multer entirely (saves parse overhead)
+  if (!contentType.includes('multipart/form-data')) {
+    req.body = req.body || {};
+    coerceEmployeeFields(req.body);
+    return next();
+  }
+
   upload.fields([
     { name: 'profilePhoto', maxCount: 1 },
     { name: 'idPhotos', maxCount: 6 },

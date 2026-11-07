@@ -26,11 +26,34 @@ async function getActive(id) {
 }
 
 async function assertDepartment(departmentId) {
-  const department = await requireDoc(Department, departmentId, 'Department');
+  const department = await Department.findById(departmentId).select('name code isActive').lean();
+  if (!department) throw new AppError('Department not found', 404, 'NOT_FOUND');
   if (!department.isActive) {
     throw new AppError('Department is inactive', 400, 'BAD_REQUEST');
   }
-  return department;
+  return {
+    _id: department._id,
+    id: String(department._id),
+    name: department.name,
+    code: department.code,
+    isActive: department.isActive,
+  };
+}
+
+async function assertActiveSite(siteId) {
+  const site = await Site.findById(siteId).select('name code status project').lean();
+  if (!site) throw new AppError('Site not found', 404, 'NOT_FOUND');
+  if (site.status !== 'active') {
+    throw new AppError('Employees can only be assigned to an active site', 400, 'BAD_REQUEST');
+  }
+  return {
+    _id: site._id,
+    id: String(site._id),
+    name: site.name,
+    code: site.code,
+    status: site.status,
+    project: site.project,
+  };
 }
 
 function assertEmploymentDates(doc) {
@@ -52,7 +75,7 @@ function presentDepartment(department) {
 }
 
 function presentAssignment(assignment, site) {
-  const json = assignment.toJSON();
+  const json = typeof assignment.toJSON === 'function' ? assignment.toJSON() : assignment;
   json.site = {
     id: site.id,
     name: site.name,
@@ -70,28 +93,27 @@ async function closeCurrentAssignments(employeeId, endDate) {
   );
 }
 
-async function assignToSite(employee, siteId, startDate, remarks) {
+async function assignToSite(employee, siteId, startDate, remarks, preloadedSite = null) {
   if (employee.status !== 'active') {
     throw new AppError('Only active employees can be assigned to a site', 400, 'BAD_REQUEST');
   }
 
-  const site = await requireDoc(Site, siteId, 'Site');
-  if (site.status !== 'active') {
-    throw new AppError('Employees can only be assigned to an active site', 400, 'BAD_REQUEST');
-  }
-
-  const existing = await Assignment.findOne({
-    employee: employee._id,
-    site: site._id,
-    isCurrent: true,
-  });
-  if (existing) {
-    throw new AppError('This employee is already assigned to the site', 409, 'CONFLICT');
-  }
+  const site = preloadedSite || await assertActiveSite(siteId);
 
   const assignmentStart = startDate || new Date();
   if (assignmentStart < employee.joiningDate) {
     throw new AppError('Assignment cannot start before the joining date', 400, 'BAD_REQUEST');
+  }
+
+  if (!preloadedSite) {
+    const existing = await Assignment.findOne({
+      employee: employee._id,
+      site: site._id,
+      isCurrent: true,
+    }).select('_id').lean();
+    if (existing) {
+      throw new AppError('This employee is already assigned to the site', 409, 'CONFLICT');
+    }
   }
 
   const assignment = await Assignment.create({
@@ -109,12 +131,14 @@ async function create(body) {
     throw new AppError('Create the employee as active, then mark them resigned', 400, 'BAD_REQUEST');
   }
 
-  const [department, code] = await Promise.all([
+  // One parallel DB round: department + code (+ site when assigning on create)
+  const [department, code, site] = await Promise.all([
     assertDepartment(body.departmentId),
     nextCode('employee', 'EMP'),
+    body.siteId ? assertActiveSite(body.siteId) : null,
   ]);
 
-  const employee = await repo.create({
+  const employee = await Employee.create({
     code,
     fullName: body.fullName,
     phone: body.phone,
@@ -122,6 +146,7 @@ async function create(body) {
     address: body.address || '',
     department: body.departmentId,
     designation: body.designation,
+    category: body.category || '',
     idType: body.idType || '',
     idNumber: body.idNumber || null,
     profilePhoto: body.profilePhoto || null,
@@ -142,9 +167,9 @@ async function create(body) {
   });
 
   const currentAssignments = [];
-  if (body.siteId) {
+  if (site) {
     try {
-      const assigned = await assignToSite(employee, body.siteId, body.joiningDate);
+      const assigned = await assignToSite(employee, body.siteId, body.joiningDate, '', site);
       currentAssignments.push(presentAssignment(assigned.assignment, assigned.site));
     } catch (error) {
       await Employee.deleteOne({ _id: employee._id });
@@ -183,6 +208,7 @@ async function list(query) {
   if (query.departmentId) filter.department = query.departmentId;
   if (query.status) filter.status = query.status;
   if (query.employmentType) filter.employmentType = query.employmentType;
+  if (query.category) filter.category = query.category;
   if (query.siteId) {
     const ids = await Assignment.find({ site: query.siteId, isCurrent: true }).distinct('employee');
     filter._id = { $in: ids };
@@ -194,6 +220,7 @@ async function list(query) {
       { code: pattern },
       { phone: pattern },
       { designation: pattern },
+      { category: pattern },
       { idNumber: pattern },
     ];
   }
@@ -221,9 +248,14 @@ async function currentAssignments(employeeId) {
 }
 
 async function getById(id) {
-  const doc = await getActive(id);
+  // Parallel: employee+department and assignments (same employee id known from params)
+  const [doc, assignments] = await Promise.all([
+    Employee.findById(id).populate(POPULATE),
+    loadCurrentAssignments([id]),
+  ]);
+  if (!doc) throw new AppError('Employee not found', 404, 'NOT_FOUND');
   const json = doc.toJSON();
-  json.currentAssignments = await currentAssignments(doc._id);
+  json.currentAssignments = assignments.get(String(id)) || [];
   return json;
 }
 
@@ -273,6 +305,7 @@ async function update(id, body) {
     'fullName',
     'address',
     'designation',
+    'category',
     'idType',
     'bankName',
     'employmentType',
@@ -295,7 +328,13 @@ async function update(id, body) {
   }
 
   await doc.save();
-  return getById(doc.id);
+  const [, assignmentMap] = await Promise.all([
+    doc.populate(POPULATE),
+    loadCurrentAssignments([doc._id]),
+  ]);
+  const json = doc.toJSON();
+  json.currentAssignments = assignmentMap.get(String(doc.id)) || [];
+  return json;
 }
 
 async function remove(id) {

@@ -411,6 +411,7 @@ const schemas = {
       address: { type: 'string', maxLength: 300 },
       departmentId: objectId,
       designation: { type: 'string', maxLength: 80, example: 'Mason' },
+      category: { type: 'string', maxLength: 80, example: 'Skilled' },
       employmentType: { type: 'string', enum: EMPLOYMENT_TYPES, example: 'permanent' },
       status: { type: 'string', enum: ['active', 'inactive'], example: 'active' },
       joiningDate: dateString,
@@ -436,6 +437,7 @@ const schemas = {
       address: { type: 'string' },
       departmentId: objectId,
       designation: { type: 'string' },
+      category: { type: 'string', maxLength: 80 },
       employmentType: { type: 'string', enum: EMPLOYMENT_TYPES },
       status: { type: 'string', enum: ['active', 'inactive'] },
       joiningDate: dateString,
@@ -463,6 +465,7 @@ const schemas = {
     address: { type: 'string', maxLength: 300 },
     departmentId: objectId,
     designation: { type: 'string', maxLength: 80 },
+    category: { type: 'string', maxLength: 80 },
     employmentType: { type: 'string', enum: EMPLOYMENT_TYPES },
     status: { type: 'string', enum: EMPLOYEE_STATUS },
     joiningDate: dateString,
@@ -851,6 +854,42 @@ const schemas = {
     },
     ['reason']
   ),
+  ImpressAmountCreate: schemaObject(
+    {
+      date: dateString,
+      employeeId: objectId,
+      givenTo: { type: 'string', maxLength: 120, example: 'Site supervisor' },
+      siteId: objectId,
+      note: { type: 'string', maxLength: 500, example: 'Petty cash for site materials' },
+    },
+    ['date', 'employeeId', 'givenTo', 'siteId']
+  ),
+  ImpressAmountUpdate: schemaObject({
+    date: dateString,
+    employeeId: objectId,
+    givenTo: { type: 'string', maxLength: 120 },
+    siteId: objectId,
+    note: { type: 'string', maxLength: 500 },
+  }),
+  LocalAmountCreate: schemaObject(
+    {
+      date: dateString,
+      impressAmountId: objectId,
+      details: { type: 'string', maxLength: 500, example: 'Cement bags purchased' },
+      returnAmount: { ...money, example: 1500 },
+      paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES, example: 'cash' },
+      uploadReceipt: { type: 'string', format: 'binary' },
+    },
+    ['date', 'impressAmountId', 'details', 'returnAmount', 'paymentMode']
+  ),
+  LocalAmountUpdate: schemaObject({
+    date: dateString,
+    impressAmountId: objectId,
+    details: { type: 'string', maxLength: 500 },
+    returnAmount: money,
+    paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES },
+    uploadReceipt: { type: 'string', format: 'binary', nullable: true },
+  }),
 
   // Response / model schemas for frontend
   NamedRef: modelSchema({
@@ -932,6 +971,7 @@ const schemas = {
       },
     },
     designation: { type: 'string' },
+    category: { type: 'string', example: 'Skilled' },
     idType: { type: 'string' },
     idNumber: { type: 'string', nullable: true },
     profilePhoto: { type: 'string', nullable: true, example: 'http://localhost:4000/uploads/employees/photo.png' },
@@ -1277,6 +1317,38 @@ const schemas = {
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
+  ImpressAmount: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'IMP-0001' },
+    date: dateString,
+    employee: {
+      type: 'object',
+      properties: {
+        id: objectId,
+        code: { type: 'string' },
+        fullName: { type: 'string' },
+        designation: { type: 'string' },
+        status: { type: 'string' },
+      },
+    },
+    givenTo: { type: 'string', example: 'Site supervisor' },
+    site: namedRef('NamedRef'),
+    note: { type: 'string' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  LocalAmount: modelSchema({
+    id: objectId,
+    code: { type: 'string', example: 'LOC-0001' },
+    date: dateString,
+    impressAmount: namedRef('ImpressAmount'),
+    details: { type: 'string', example: 'Cement bags purchased' },
+    returnAmount: money,
+    paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES },
+    uploadReceipt: { type: 'string', nullable: true },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
 };
 
 const ref = (name) => namedRef(name);
@@ -1336,6 +1408,8 @@ const spec = {
     { name: 'Inventory' },
     { name: 'Vehicles' },
     { name: 'Accounts' },
+    { name: 'ImpressAmounts' },
+    { name: 'LocalAmounts' },
   ],
   components: {
     securitySchemes: {
@@ -1515,6 +1589,7 @@ const spec = {
           query('siteId', objectId),
           query('status', { type: 'string', enum: EMPLOYEE_STATUS }),
           query('employmentType', { type: 'string', enum: EMPLOYMENT_TYPES }),
+          query('category', { type: 'string', maxLength: 80 }),
         ],
         data: 'Employee',
         list: true,
@@ -2140,6 +2215,119 @@ const spec = {
         parameters: [pathParam()],
         data: 'Advance',
         body: jsonBody(ref('VoidBody'), { reason: 'Entered for the wrong employee' }),
+      }),
+    },
+    '/impress-amounts': {
+      get: operation('ImpressAmounts', 'List impress amounts', {
+        parameters: [
+          ...paging,
+          query('employeeId', objectId),
+          query('siteId', objectId),
+          query('from', dateString),
+          query('to', dateString),
+        ],
+        data: 'ImpressAmount',
+        list: true,
+      }),
+    },
+    '/impress-amounts/create': {
+      post: operation('ImpressAmounts', 'Create an impress amount', {
+        status: '201',
+        data: 'ImpressAmount',
+        body: jsonBody(ref('ImpressAmountCreate'), {
+          date: '2026-04-14',
+          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          givenTo: 'Site supervisor',
+          siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
+          note: 'Petty cash for site materials',
+        }),
+      }),
+    },
+    '/impress-amounts/get-by-id/{id}': {
+      get: operation('ImpressAmounts', 'Get an impress amount', {
+        parameters: [pathParam()],
+        data: 'ImpressAmount',
+      }),
+    },
+    '/impress-amounts/update/{id}': {
+      patch: operation('ImpressAmounts', 'Update an impress amount', {
+        parameters: [pathParam()],
+        data: 'ImpressAmount',
+        body: jsonBody(ref('ImpressAmountUpdate'), {
+          givenTo: 'Store keeper',
+          note: 'Updated note',
+        }),
+      }),
+    },
+    '/impress-amounts/remove/{id}': {
+      delete: operation('ImpressAmounts', 'Delete an impress amount', {
+        parameters: [pathParam()],
+      }),
+    },
+    '/local-amounts': {
+      get: operation('LocalAmounts', 'List local amounts', {
+        parameters: [
+          ...paging,
+          query('impressAmountId', objectId),
+          query('paymentMode', { type: 'string', enum: PAYMENT_MODE_NOTES }),
+          query('from', dateString),
+          query('to', dateString),
+        ],
+        data: 'LocalAmount',
+        list: true,
+      }),
+    },
+    '/local-amounts/create': {
+      post: operation('LocalAmounts', 'Create a local amount', {
+        status: '201',
+        data: 'LocalAmount',
+        body: {
+          required: true,
+          content: {
+            'multipart/form-data': { schema: ref('LocalAmountCreate') },
+            'application/json': {
+              schema: ref('LocalAmountCreate'),
+              example: {
+                date: '2026-04-14',
+                impressAmountId: '64b0c0c0c0c0c0c0c0c0c0c0',
+                details: 'Cement bags purchased',
+                returnAmount: 1500,
+                paymentMode: 'cash',
+              },
+            },
+          },
+        },
+      }),
+    },
+    '/local-amounts/get-by-id/{id}': {
+      get: operation('LocalAmounts', 'Get a local amount', {
+        parameters: [pathParam()],
+        data: 'LocalAmount',
+      }),
+    },
+    '/local-amounts/update/{id}': {
+      patch: operation('LocalAmounts', 'Update a local amount', {
+        parameters: [pathParam()],
+        data: 'LocalAmount',
+        body: {
+          required: true,
+          content: {
+            'multipart/form-data': { schema: ref('LocalAmountUpdate') },
+            'application/json': {
+              schema: ref('LocalAmountUpdate'),
+              example: {
+                details: 'Updated purchase details',
+                returnAmount: 1200,
+                paymentMode: 'upi',
+              },
+            },
+          },
+        },
+      }),
+    },
+    '/local-amounts/remove/{id}': {
+      delete: operation('LocalAmounts', 'Delete a local amount', {
+        parameters: [pathParam()],
       }),
     },
   },
