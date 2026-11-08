@@ -12,6 +12,12 @@ const {
   dateValue,
 } = require('../../common/validators/zod');
 
+const moneyEntry = z.object({
+  amount: money,
+  date: dateValue,
+  note: optionalText(300),
+});
+
 const createBody = z.object({
   projectId: objectId,
   clientName: shortText(120),
@@ -21,9 +27,9 @@ const createBody = z.object({
   startDate: dateValue,
   actualEndDate: dateValue.optional(),
   budgetAmount: money.optional(),
-  clientAmount: money.optional(),
-  moneySpend: money.optional(),
   installmentType: optionalText(120),
+  clientInstallments: z.array(moneyEntry).max(100).optional(),
+  projectSpends: z.array(moneyEntry).max(200).optional(),
 }).superRefine((data, ctx) => {
   if (data.actualEndDate && data.actualEndDate < data.startDate) {
     ctx.addIssue({
@@ -43,9 +49,18 @@ const updateBody = z.object({
   startDate: dateValue.optional(),
   actualEndDate: dateValue.nullable().optional(),
   budgetAmount: money.nullable().optional(),
-  clientAmount: money.nullable().optional(),
-  moneySpend: money.nullable().optional(),
   installmentType: optionalText(120).nullable(),
+});
+
+const moneyEntryBody = z.object({
+  amount: money,
+  date: dateValue,
+  note: optionalText(300),
+});
+
+const entryParams = z.object({
+  id: objectId,
+  entryId: objectId,
 });
 
 module.exports = {
@@ -58,4 +73,8 @@ module.exports = {
   create: requestSchema({ body: createBody }),
   update: requestSchema({ params: idParams, body: updateBody }),
   byId: requestSchema({ params: idParams }),
+  addClientInstallment: requestSchema({ params: idParams, body: moneyEntryBody }),
+  removeClientInstallment: requestSchema({ params: entryParams }),
+  addProjectSpend: requestSchema({ params: idParams, body: moneyEntryBody }),
+  removeProjectSpend: requestSchema({ params: entryParams }),
 };

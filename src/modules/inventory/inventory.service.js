@@ -33,7 +33,7 @@ const MOVEMENT_POPULATE = [
   { path: 'item', select: 'name sku unit code' },
   { path: 'fromLocation', select: 'name code type' },
   { path: 'toLocation', select: 'name code type' },
-  { path: 'project', select: 'name code' },
+  { path: 'project', select: 'name' },
   { path: 'site', select: 'name code' },
   { path: 'employee', select: 'fullName code designation' },
 ];

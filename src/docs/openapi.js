@@ -332,38 +332,15 @@ const schemas = {
   ProjectCreate: schemaObject(
     {
       name: { type: 'string', maxLength: 120, example: 'Riverfront' },
-      clientName: { type: 'string', maxLength: 120, example: 'City Authority' },
-      clientPhone: { type: 'string', maxLength: 20, example: '9876543210' },
       description: { type: 'string', maxLength: 2000 },
       status: { type: 'string', enum: PROJECT_STATUS, example: 'active' },
-      startDate: dateString,
-      expectedEndDate: dateString,
-      budgetAmount: money,
-      clientAmount: money,
-      moneySpent: money,
-      address: { type: 'string', maxLength: 300 },
-      city: { type: 'string', maxLength: 80 },
-      state: { type: 'string', maxLength: 80 },
-      pincode: { type: 'string', maxLength: 12 },
     },
-    ['name', 'clientName', 'startDate']
+    ['name']
   ),
   ProjectUpdate: schemaObject({
     name: { type: 'string', maxLength: 120 },
-    clientName: { type: 'string', maxLength: 120 },
-    clientPhone: { type: 'string', maxLength: 20, nullable: true },
     description: { type: 'string', maxLength: 2000 },
     status: { type: 'string', enum: PROJECT_STATUS },
-    startDate: dateString,
-    expectedEndDate: { ...dateString, nullable: true },
-    actualEndDate: { ...dateString, nullable: true },
-    budgetAmount: { ...money, nullable: true },
-    clientAmount: { ...money, nullable: true },
-    moneySpent: { ...money, nullable: true },
-    address: { type: 'string', maxLength: 300 },
-    city: { type: 'string', maxLength: 80 },
-    state: { type: 'string', maxLength: 80 },
-    pincode: { type: 'string', maxLength: 12, nullable: true },
   }),
 
   SiteCreate: schemaObject(
@@ -699,7 +676,7 @@ const schemas = {
       amount: money,
       modeOfPayment: { type: 'string', enum: PAYMENT_MODE_NOTES, example: 'cash' },
       reference: { type: 'string', maxLength: 80, example: 'BILL-1024' },
-      uploadReceipt: { type: 'string', maxLength: 500 },
+      uploadReceipt: { type: 'string' },
       description: { type: 'string', minLength: 3, maxLength: 500, example: 'Engine oil change' },
       nextDueDate: dateString,
       recordExpense: { type: 'boolean', example: true },
@@ -733,7 +710,7 @@ const schemas = {
     amount: money,
     modeOfPayment: { type: 'string', enum: PAYMENT_MODE_NOTES },
     reference: { type: 'string', maxLength: 80 },
-    uploadReceipt: { type: 'string', maxLength: 500 },
+    uploadReceipt: { type: 'string' },
     description: { type: 'string', minLength: 3, maxLength: 500 },
     nextDueDate: { ...dateString, nullable: true },
     recordExpense: { type: 'boolean' },
@@ -744,21 +721,6 @@ const schemas = {
     completedAt: dateString,
     completionNote: { type: 'string', maxLength: 500, example: 'Done' },
   }),
-  FuelCreate: schemaObject(
-    {
-      loggedAt: dateTimeString,
-      liters: quantity,
-      amount: positiveMoney,
-      odometer: { type: 'number', minimum: 0, example: 12500 },
-      siteId: objectId,
-      remarks: { type: 'string', maxLength: 300 },
-      recordExpense: { type: 'boolean', example: true },
-      payeeName: { type: 'string', maxLength: 120 },
-      paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
-    },
-    ['liters', 'amount']
-  ),
-
   SalaryCreate: schemaObject(
     {
       employeeId: objectId,
@@ -892,6 +854,14 @@ const schemas = {
     paymentMode: { type: 'string', enum: PAYMENT_MODE_NOTES },
     uploadReceipt: { type: 'string', format: 'binary', nullable: true },
   }),
+  ProjectMoneyEntry: schemaObject(
+    {
+      amount: { ...money, example: 500000 },
+      date: dateString,
+      note: { type: 'string', maxLength: 300, example: 'First installment' },
+    },
+    ['amount', 'date']
+  ),
   ProjectDetailCreate: schemaObject(
     {
       projectId: objectId,
@@ -902,9 +872,17 @@ const schemas = {
       startDate: dateString,
       actualEndDate: dateString,
       budgetAmount: { ...money, example: 5000000 },
-      clientAmount: { ...money, example: 2000000 },
-      moneySpend: { ...money, example: 750000 },
       installmentType: { type: 'string', maxLength: 120, example: 'Monthly' },
+      clientInstallments: {
+        type: 'array',
+        items: namedRef('ProjectMoneyEntry'),
+        description: 'Client payments by installment; clientAmount is sum of these',
+      },
+      projectSpends: {
+        type: 'array',
+        items: namedRef('ProjectMoneyEntry'),
+        description: 'Project spend entries by date; moneySpend is sum of these',
+      },
     },
     ['projectId', 'clientName', 'startDate']
   ),
@@ -917,9 +895,39 @@ const schemas = {
     startDate: dateString,
     actualEndDate: { ...dateString, nullable: true },
     budgetAmount: { ...money, nullable: true },
-    clientAmount: { ...money, nullable: true },
-    moneySpend: { ...money, nullable: true },
     installmentType: { type: 'string', maxLength: 120, nullable: true },
+  }),
+  ProjectMoneyEntryCreate: schemaObject(
+    {
+      amount: { ...money, example: 500000 },
+      date: dateString,
+      note: { type: 'string', maxLength: 300, example: 'Second installment' },
+    },
+    ['amount', 'date']
+  ),
+  GallaryCreate: schemaObject(
+    {
+      name: { type: 'string', maxLength: 120, example: 'Site inauguration' },
+      date: dateString,
+      description: { type: 'string', maxLength: 2000, example: 'Opening ceremony photos' },
+      image: { type: 'string', maxLength: 500 },
+    },
+    ['name', 'date']
+  ),
+  GallaryCreateForm: schemaObject(
+    {
+      name: { type: 'string', maxLength: 120 },
+      date: dateString,
+      description: { type: 'string', maxLength: 2000 },
+      image: { type: 'string', format: 'binary', description: 'JPEG, PNG, or WebP up to 5 MB' },
+    },
+    ['name', 'date']
+  ),
+  GallaryUpdate: schemaObject({
+    name: { type: 'string', maxLength: 120 },
+    date: dateString,
+    description: { type: 'string', maxLength: 2000 },
+    image: { type: 'string', format: 'binary', nullable: true },
   }),
 
   // Response / model schemas for frontend
@@ -940,24 +948,9 @@ const schemas = {
   }),
   Project: modelSchema({
     id: objectId,
-    code: { type: 'string', example: 'PRJ-0001' },
     name: { type: 'string', example: 'Riverfront' },
-    clientName: { type: 'string' },
-    clientPhone: { type: 'string' },
     description: { type: 'string' },
     status: { type: 'string', enum: PROJECT_STATUS },
-    startDate: dateString,
-    expectedEndDate: { ...dateString, nullable: true },
-    actualEndDate: { ...dateString, nullable: true },
-    budgetAmount: money,
-    clientAmount: money,
-    clientPendingAmount: money,
-    moneySpent: money,
-    currency: { type: 'string', example: 'INR' },
-    address: { type: 'string' },
-    city: { type: 'string' },
-    state: { type: 'string' },
-    pincode: { type: 'string' },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1160,19 +1153,6 @@ const schemas = {
     nextDueDate: { ...dateString, nullable: true },
     completedAt: { ...dateTimeString, nullable: true },
     completionNote: { type: 'string' },
-    createdAt: dateTimeString,
-    updatedAt: dateTimeString,
-  }),
-  FuelLog: modelSchema({
-    id: objectId,
-    vehicle: objectId,
-    loggedAt: dateTimeString,
-    liters: quantity,
-    amount: money,
-    odometer: { type: 'number' },
-    site: namedRef('NamedRef'),
-    remarks: { type: 'string' },
-    expense: { ...objectId, nullable: true },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1391,10 +1371,44 @@ const schemas = {
     startDate: dateString,
     actualEndDate: { ...dateString, nullable: true },
     budgetAmount: money,
-    clientAmount: money,
-    clientPendingAmount: { ...money, nullable: true },
-    moneySpend: money,
+    clientAmount: { ...money, description: 'Auto: sum of clientInstallments' },
+    clientPendingAmount: { ...money, nullable: true, description: 'Auto: budgetAmount - clientAmount' },
+    moneySpend: { ...money, description: 'Auto: sum of projectSpends' },
     installmentType: { type: 'string', example: 'Monthly' },
+    clientInstallments: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: objectId,
+          installmentNo: { type: 'integer', example: 1 },
+          amount: money,
+          date: dateString,
+          note: { type: 'string' },
+        },
+      },
+    },
+    projectSpends: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          id: objectId,
+          amount: money,
+          date: dateString,
+          note: { type: 'string' },
+        },
+      },
+    },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Gallary: modelSchema({
+    id: objectId,
+    image: { type: 'string', nullable: true, example: 'http://localhost:4000/uploads/gallary/photo.jpg' },
+    date: dateString,
+    name: { type: 'string', example: 'Site inauguration' },
+    description: { type: 'string', example: 'Opening ceremony photos' },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1460,6 +1474,7 @@ const spec = {
     { name: 'ImpressAmounts' },
     { name: 'LocalAmounts' },
     { name: 'ProjectDetails' },
+    { name: 'Gallary' },
   ],
   components: {
     securitySchemes: {
@@ -1572,12 +1587,7 @@ const spec = {
         data: 'Project',
         body: jsonBody(ref('ProjectCreate'), {
           name: 'Riverfront',
-          clientName: 'City Authority',
-          clientPhone: '9876543210',
-          startDate: '2026-04-01',
-          budgetAmount: 5000000,
-          clientAmount: 1500000,
-          moneySpent: 0,
+          description: 'Main civil package',
           status: 'active',
         }),
       }),
@@ -1592,7 +1602,7 @@ const spec = {
       patch: operation('Projects', 'Update a project', {
         parameters: [pathParam()],
         data: 'Project',
-        body: jsonBody(ref('ProjectUpdate'), { moneySpent: 850000, clientAmount: 2000000 }),
+        body: jsonBody(ref('ProjectUpdate'), { status: 'on_hold', description: 'Paused for monsoon' }),
       }),
     },
     '/projects/delete/{id}': {
@@ -2117,23 +2127,6 @@ const spec = {
         body: jsonBody(ref('MaintenanceComplete'), { completionNote: 'Done' }),
       }),
     },
-    '/vehicles/{id}/fuel-logs': {
-      get: operation('Vehicles', 'List fuel logs', {
-        parameters: [pathParam(), ...paging],
-        data: 'FuelLog',
-        list: true,
-      }),
-      post: operation('Vehicles', 'Add a fuel log', {
-        parameters: [pathParam()],
-        data: 'FuelLog',
-        body: jsonBody(ref('FuelCreate'), {
-          liters: 40,
-          amount: 3600,
-          odometer: 12500,
-          recordExpense: true,
-        }),
-      }),
-    },
     '/accounts/summary': {
       get: operation('Accounts', 'Salary and expense totals', {
         parameters: [query('from', dateString), query('to', dateString), query('projectId', objectId)],
@@ -2405,8 +2398,13 @@ const spec = {
           status: 'planning',
           startDate: '2026-04-01',
           budgetAmount: 5000000,
-          clientAmount: 2000000,
-          moneySpend: 750000,
+          installmentType: 'Monthly',
+          clientInstallments: [
+            { amount: 1000000, date: '2026-04-01', note: 'First installment' },
+          ],
+          projectSpends: [
+            { amount: 250000, date: '2026-04-05', note: 'Cement purchase' },
+          ],
         }),
       }),
     },
@@ -2422,13 +2420,97 @@ const spec = {
         data: 'ProjectDetail',
         body: jsonBody(ref('ProjectDetailUpdate'), {
           status: 'active',
-          clientAmount: 2500000,
-          moneySpend: 900000,
+          budgetAmount: 5500000,
         }),
       }),
     },
     '/project-details/remove/{id}': {
       delete: operation('ProjectDetails', 'Delete a project detail', {
+        parameters: [pathParam()],
+      }),
+    },
+    '/project-details/{id}/client-installments': {
+      post: operation('ProjectDetails', 'Add a client installment payment', {
+        parameters: [pathParam()],
+        data: 'ProjectDetail',
+        body: jsonBody(ref('ProjectMoneyEntryCreate'), {
+          amount: 500000,
+          date: '2026-05-01',
+          note: 'Second installment',
+        }),
+      }),
+    },
+    '/project-details/{id}/client-installments/{entryId}': {
+      delete: operation('ProjectDetails', 'Remove a client installment', {
+        parameters: [pathParam(), pathParam('entryId')],
+        data: 'ProjectDetail',
+      }),
+    },
+    '/project-details/{id}/project-spends': {
+      post: operation('ProjectDetails', 'Add a project spend entry', {
+        parameters: [pathParam()],
+        data: 'ProjectDetail',
+        body: jsonBody(ref('ProjectMoneyEntryCreate'), {
+          amount: 120000,
+          date: '2026-05-03',
+          note: 'Steel purchase',
+        }),
+      }),
+    },
+    '/project-details/{id}/project-spends/{entryId}': {
+      delete: operation('ProjectDetails', 'Remove a project spend entry', {
+        parameters: [pathParam(), pathParam('entryId')],
+        data: 'ProjectDetail',
+      }),
+    },
+    '/gallary': {
+      get: operation('Gallary', 'List gallary items', {
+        parameters: [
+          ...paging,
+          query('from', dateString),
+          query('to', dateString),
+        ],
+        data: 'Gallary',
+        list: true,
+      }),
+    },
+    '/gallary/create': {
+      post: operation('Gallary', 'Create a gallary item', {
+        status: '201',
+        data: 'Gallary',
+        body: bothBodies(
+          ref('GallaryCreate'),
+          {
+            name: 'Site inauguration',
+            date: '2026-04-14',
+            description: 'Opening ceremony photos',
+          },
+          ref('GallaryCreateForm')
+        ),
+      }),
+    },
+    '/gallary/get-by-id/{id}': {
+      get: operation('Gallary', 'Get a gallary item', {
+        parameters: [pathParam()],
+        data: 'Gallary',
+      }),
+    },
+    '/gallary/update/{id}': {
+      patch: operation('Gallary', 'Update a gallary item', {
+        parameters: [pathParam()],
+        data: 'Gallary',
+        body: bothBodies(
+          ref('GallaryUpdate'),
+          {
+            name: 'Updated album name',
+            description: 'Updated description',
+          },
+          ref('GallaryCreateForm')
+        ),
+      }),
+    },
+    '/gallary/remove/{id}': {
+      delete: operation('Gallary', 'Delete a gallary item', {
         parameters: [pathParam()],
       }),
     },

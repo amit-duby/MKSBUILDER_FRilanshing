@@ -17,7 +17,6 @@ const VehicleType = require('./vehicleType.model');
 const Assignment = require('./assignment.model');
 const Maintenance = require('./maintenance.model');
 const MaintenanceCategory = require('./maintenanceCategory.model');
-const FuelLog = require('./fuel.model');
 const { removeStoredReceipt } = require('../../common/middleware/maintenanceUpload');
 const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
@@ -335,7 +334,7 @@ const service = {
       ];
     }
 
-    return repo.paginate({
+    const result = await repo.paginate({
       filter,
       page: query.page,
       limit: query.limit,
@@ -344,7 +343,47 @@ const service = {
         VEHICLE_TYPE_POPULATE,
         { path: 'currentAssignment', populate: ASSIGNMENT_POPULATE },
       ],
+      lean: true,
     });
+
+    const missingIds = result.items
+      .filter((item) => {
+        const assignment = item.currentAssignment;
+        return !assignment || typeof assignment !== 'object' || !assignment.site;
+      })
+      .map((item) => item._id || item.id);
+
+    const fallbackByVehicle = new Map();
+    if (missingIds.length) {
+      const rows = await Assignment.find({
+        vehicle: { $in: missingIds },
+        releasedAt: null,
+      })
+        .populate(ASSIGNMENT_POPULATE)
+        .sort({ assignedAt: -1 })
+        .lean({ virtuals: true });
+
+      for (const row of rows) {
+        const key = String(row.vehicle);
+        if (!fallbackByVehicle.has(key)) fallbackByVehicle.set(key, row);
+      }
+    }
+
+    result.items = result.items.map((item) => {
+      const id = String(item.id || item._id);
+      let assignment = item.currentAssignment;
+      if (!assignment || typeof assignment !== 'object' || !assignment.site) {
+        assignment = fallbackByVehicle.get(id) || null;
+      }
+      return {
+        ...item,
+        id,
+        vehicleType: presentVehicleType(item.vehicleType),
+        currentAssignment: presentAssignmentDetail(assignment),
+      };
+    });
+
+    return result;
   },
 
   getById(id) {
@@ -389,7 +428,6 @@ const service = {
     await Promise.all([
       Assignment.deleteMany({ vehicle: doc._id }),
       Maintenance.deleteMany({ vehicle: doc._id }),
-      FuelLog.deleteMany({ vehicle: doc._id }),
     ]);
     await doc.deleteOne();
   },
@@ -712,65 +750,6 @@ const service = {
     return log;
   },
 
-  async addFuel(id, body, user) {
-    const vehicle = await getMutable(id);
-    if (vehicle.status === 'inactive') {
-      throw new AppError('Inactive vehicles cannot take fuel logs', 400, 'BAD_REQUEST');
-    }
-    assertOdometer(vehicle, body.odometer);
-
-    let site;
-    if (body.siteId) {
-      site = await requireDoc(Site, body.siteId, 'Site');
-    }
-
-    let expense;
-    if (body.recordExpense) {
-      expense = await recordExpense({
-        category: 'vehicle',
-        amount: body.amount,
-        expenseDate: body.loggedAt || new Date(),
-        vehicleId: vehicle.id,
-        siteId: body.siteId,
-        projectId: site ? String(site.project) : undefined,
-        payeeName: body.payeeName || 'Fuel vendor',
-        description: body.remarks && body.remarks.length >= 3
-          ? body.remarks
-          : `Fuel for ${vehicle.registrationNumber}`,
-        paymentModeNote: body.paymentModeNote,
-      }, user);
-    }
-
-    try {
-      const log = await FuelLog.create({
-        vehicle: vehicle._id,
-        loggedAt: body.loggedAt || new Date(),
-        liters: body.liters,
-        amount: body.amount,
-        odometer: body.odometer,
-        site: body.siteId,
-        project: site && site.project,
-        remarks: body.remarks || '',
-        expense: expense && expense._id,
-      });
-      await vehicle.save();
-      return log;
-    } catch (error) {
-      await voidExpense(expense);
-      throw error;
-    }
-  },
-
-  async listFuel(id, query) {
-    await getMutable(id);
-    return new BaseRepository(FuelLog).paginate({
-      filter: { vehicle: id },
-      page: query.page,
-      limit: query.limit,
-      sort: { loggedAt: -1 },
-      populate: [{ path: 'site', select: 'name code' }],
-    });
-  },
 };
 
 module.exports = service;

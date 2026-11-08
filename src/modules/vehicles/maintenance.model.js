@@ -20,7 +20,7 @@ const maintenanceSchema = new mongoose.Schema(
     amount: { type: Number, min: 0 },
     modeOfPayment: { type: String, enum: PAYMENT_MODE_NOTES },
     reference: { type: String, trim: true, maxlength: 80, default: '' },
-    uploadReceipt: { type: String, trim: true, maxlength: 500, default: null },
+    uploadReceipt: { type: String, trim: true, default: null },
     description: { type: String, trim: true, maxlength: 500, default: '' },
     nextDueDate: { type: Date },
     completedAt: { type: Date },

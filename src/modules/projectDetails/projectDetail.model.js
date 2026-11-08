@@ -2,6 +2,15 @@ const mongoose = require('mongoose');
 const { COLLECTIONS, PROJECT_STATUS } = require('../../config/constants');
 const applyJson = require('../../common/utils/applyJson');
 
+const moneyEntrySchema = new mongoose.Schema(
+  {
+    amount: { type: Number, required: true, min: 0 },
+    date: { type: Date, required: true },
+    note: { type: String, trim: true, maxlength: 300, default: '' },
+  },
+  { _id: true }
+);
+
 const projectDetailSchema = new mongoose.Schema(
   {
     project: {
@@ -18,10 +27,14 @@ const projectDetailSchema = new mongoose.Schema(
     startDate: { type: Date, required: true },
     actualEndDate: { type: Date },
     budgetAmount: { type: Number, min: 0 },
-    clientAmount: { type: Number, min: 0 },
+    /** Sum of clientInstallments — kept in sync by the service */
+    clientAmount: { type: Number, min: 0, default: 0 },
     clientPendingAmount: { type: Number },
+    /** Sum of projectSpends — kept in sync by the service */
     moneySpend: { type: Number, min: 0, default: 0 },
     installmentType: { type: String, trim: true, maxlength: 120, default: '' },
+    clientInstallments: { type: [moneyEntrySchema], default: [] },
+    projectSpends: { type: [moneyEntrySchema], default: [] },
   },
   { timestamps: true, collection: COLLECTIONS.projectDetails }
 );

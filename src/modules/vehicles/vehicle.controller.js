@@ -66,16 +66,6 @@ const completeMaintenance = asyncHandler(async (req, res) => {
   return ok(res, data, 'Maintenance completed');
 });
 
-const addFuel = asyncHandler(async (req, res) => {
-  const data = await service.addFuel(req.params.id, req.body, req.user);
-  return created(res, data, 'Fuel log recorded');
-});
-
-const listFuel = asyncHandler(async (req, res) => {
-  const result = await service.listFuel(req.params.id, req.query);
-  return ok(res, result.items, 'Fuel logs fetched', result.meta);
-});
-
 module.exports = {
   ...crud,
   alerts,
@@ -88,6 +78,4 @@ module.exports = {
   listMaintenance,
   updateMaintenance,
   completeMaintenance,
-  addFuel,
-  listFuel,
 };

@@ -8,7 +8,6 @@ const {
   z,
   objectId,
   money,
-  quantity,
   requestSchema,
   idParams,
   listQuery,
@@ -71,7 +70,7 @@ const maintenanceBody = z.preprocess((value) => {
   amount: money,
   modeOfPayment: z.enum(PAYMENT_MODE_NOTES),
   reference: optionalText(80),
-  uploadReceipt: z.string().trim().min(1).max(500).optional(),
+  uploadReceipt: z.string().trim().min(1).optional(),
   description: z.string().trim().min(3).max(500).optional(),
   nextDueDate: dateValue.optional(),
   recordExpense: z.boolean().optional(),
@@ -93,7 +92,7 @@ const updateMaintenanceBody = z.preprocess((value) => {
   amount: money.optional(),
   modeOfPayment: z.enum(PAYMENT_MODE_NOTES).optional(),
   reference: optionalText(80),
-  uploadReceipt: z.string().trim().min(1).max(500).optional(),
+  uploadReceipt: z.string().trim().min(1).optional(),
   description: z.string().trim().min(3).max(500).optional(),
   nextDueDate: dateValue.nullable().optional(),
   recordExpense: z.boolean().optional(),
@@ -106,18 +105,6 @@ const updateMaintenanceBody = z.preprocess((value) => {
 const completeBody = z.object({
   completedAt: dateValue.optional(),
   completionNote: optionalText(500),
-});
-
-const fuelBody = z.object({
-  loggedAt: dateValue.optional(),
-  liters: quantity,
-  amount: money.refine((value) => value > 0, { message: 'Amount must be greater than zero' }),
-  odometer: z.number().finite().min(0).optional(),
-  siteId: objectId.optional(),
-  remarks: optionalText(300),
-  recordExpense: z.boolean().optional(),
-  payeeName: shortText(120).optional(),
-  paymentModeNote: z.enum(PAYMENT_MODE_NOTES).optional(),
 });
 
 const maintenanceParams = z.object({
@@ -170,7 +157,6 @@ module.exports = {
     body: updateMaintenanceBody,
   }),
   complete: requestSchema({ params: maintenanceParams, body: completeBody }),
-  fuel: requestSchema({ params: idParams, body: fuelBody }),
   pagedChild: requestSchema({
     params: idParams,
     query: listQuery(),

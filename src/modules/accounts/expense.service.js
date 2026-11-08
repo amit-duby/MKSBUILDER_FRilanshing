@@ -14,7 +14,7 @@ const Item = require('../inventory/item.model');
 const SORT_FIELDS = ['expenseDate', 'amount', 'code', 'createdAt', 'category'];
 const POPULATE = [
   { path: 'employee', select: 'fullName code' },
-  { path: 'project', select: 'name code' },
+  { path: 'project', select: 'name' },
   { path: 'site', select: 'name code' },
   { path: 'vehicle', select: 'registrationNumber code' },
   { path: 'item', select: 'name sku unit' },

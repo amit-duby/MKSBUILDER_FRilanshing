@@ -17,7 +17,7 @@ const EmployeeAssignment = require('../employees/assignment.model');
 const repo = new BaseRepository(Site);
 const SORT_FIELDS = ['name', 'code', 'startDate', 'createdAt', 'status'];
 const POPULATE = [
-  { path: 'project', select: 'name code status' },
+  { path: 'project', select: 'name status' },
   { path: 'incharge', select: 'fullName code designation status' },
 ];
 
@@ -33,7 +33,7 @@ function briefRef(doc, fields) {
 
 function present(doc, project, incharge) {
   const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
-  if (project) json.project = briefRef(project, ['name', 'code', 'status']);
+  if (project) json.project = briefRef(project, ['name', 'status']);
   if (incharge !== undefined) {
     json.incharge = incharge
       ? briefRef(incharge, ['fullName', 'code', 'designation', 'status'])

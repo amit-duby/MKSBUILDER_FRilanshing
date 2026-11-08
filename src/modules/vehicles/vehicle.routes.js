@@ -42,8 +42,6 @@ router.post(
   validate(schema.complete),
   controller.completeMaintenance
 );
-router.get('/:id/fuel-logs', validate(schema.pagedChild), controller.listFuel);
-router.post('/:id/fuel-logs', validate(schema.fuel), controller.addFuel);
 router.get('/:id', validate(schema.byId), controller.getById);
 router.patch('/:id', validate(schema.update), controller.update);
 router.delete('/:id', validate(schema.byId), controller.remove);

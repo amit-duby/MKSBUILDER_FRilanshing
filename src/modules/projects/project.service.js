@@ -2,7 +2,6 @@ const mongoose = require('mongoose');
 const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const { CURRENCY, COLLECTIONS } = require('../../config/constants');
-const { nextCode } = require('../../common/utils/sequence');
 const { roundMoney } = require('../../common/utils/money');
 const {
   assignDefined,
@@ -16,35 +15,13 @@ const SalaryRecord = require('../accounts/salary.model');
 const VehicleAssignment = require('../vehicles/assignment.model');
 
 const repo = new BaseRepository(Project);
-const SORT_FIELDS = ['name', 'code', 'startDate', 'createdAt', 'status'];
-const UPDATE_FIELDS = [
-  'name',
-  'clientName',
-  'clientPhone',
-  'description',
-  'status',
-  'startDate',
-  'expectedEndDate',
-  'actualEndDate',
-  'budgetAmount',
-  'clientAmount',
-  'moneySpent',
-  'address',
-  'city',
-  'state',
-  'pincode',
-];
+const SORT_FIELDS = ['name', 'createdAt', 'status'];
+const UPDATE_FIELDS = ['name', 'description', 'status'];
 
-function pendingClientAmount(budgetAmount, clientAmount) {
-  if (budgetAmount == null) return null;
-  const paid = clientAmount == null ? 0 : Number(clientAmount);
-  return roundMoney(Number(budgetAmount) - paid);
-}
-
-function withClientPending(doc) {
-  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
-  json.clientPendingAmount = pendingClientAmount(json.budgetAmount, json.clientAmount);
-  json.moneySpent = json.moneySpent == null ? 0 : roundMoney(json.moneySpent);
+function present(doc) {
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
+  if (json._id && json.id == null) json.id = String(json._id);
+  delete json.__v;
   return json;
 }
 
@@ -55,43 +32,20 @@ async function getActive(id) {
 }
 
 async function getActiveLean(id) {
-  const doc = await Project.findById(id).lean({ virtuals: true });
+  const doc = await Project.findById(id)
+    .select('name description status createdAt updatedAt')
+    .lean({ virtuals: true });
   if (!doc) throw new AppError('Project not found', 404, 'NOT_FOUND');
-  if (doc._id && doc.id == null) doc.id = String(doc._id);
-  return doc;
-}
-
-function assertDates(doc) {
-  if (doc.expectedEndDate && doc.startDate && doc.expectedEndDate < doc.startDate) {
-    throw new AppError('Expected end date must be on or after the start date', 400, 'BAD_REQUEST');
-  }
-  if (doc.actualEndDate && doc.startDate && doc.actualEndDate < doc.startDate) {
-    throw new AppError('Actual end date must be on or after the start date', 400, 'BAD_REQUEST');
-  }
-
+  return present(doc);
 }
 
 async function create(body) {
   const created = await repo.create({
-    code: await nextCode('project', 'PRJ'),
     name: body.name,
-    clientName: body.clientName,
-    clientPhone: body.clientPhone,
     description: body.description || '',
     status: body.status || 'planning',
-    startDate: body.startDate,
-    expectedEndDate: body.expectedEndDate,
-    budgetAmount: body.budgetAmount,
-    clientAmount: body.clientAmount,
-    moneySpent: body.moneySpent ?? 0,
-    clientPendingAmount: pendingClientAmount(body.budgetAmount, body.clientAmount),
-    currency: CURRENCY,
-    address: body.address || '',
-    city: body.city || '',
-    state: body.state || '',
-    pincode: body.pincode || '',
   });
-  return withClientPending(created);
+  return present(created);
 }
 
 async function list(query) {
@@ -99,44 +53,21 @@ async function list(query) {
   if (query.status) filter.status = query.status;
   if (query.search) {
     const pattern = containsRegex(query.search);
-    filter.$or = [{ name: pattern }, { code: pattern }, { clientName: pattern }, { city: pattern }];
+    filter.$or = [{ name: pattern }, { description: pattern }];
   }
 
-  const page = query.page;
-  const limit = query.limit;
-  const [row] = await Project.aggregate([
-    { $match: filter },
-    {
-      $facet: {
-        items: [
-          { $sort: parseSort(query.sort, SORT_FIELDS) },
-          { $skip: (page - 1) * limit },
-          { $limit: limit },
-        ],
-        total: [{ $count: 'count' }],
-      },
-    },
-  ]);
-  const total = row && row.total[0] ? row.total[0].count : 0;
-
-  return {
-    items: (row ? row.items : []).map((doc) => {
-      doc.id = doc._id.toString();
-      delete doc._id;
-      delete doc.__v;
-      return withClientPending(doc);
-    }),
-    meta: {
-      page,
-      limit,
-      total,
-      totalPages: total === 0 ? 1 : Math.ceil(total / limit),
-    },
-  };
+  return repo.paginate({
+    filter,
+    page: query.page,
+    limit: query.limit,
+    sort: parseSort(query.sort, SORT_FIELDS, { createdAt: -1 }),
+    select: 'name description status createdAt updatedAt',
+    lean: true,
+  });
 }
 
 async function getById(id) {
-  return withClientPending(await getActiveLean(id));
+  return getActiveLean(id);
 }
 
 async function update(id, body) {
@@ -155,12 +86,8 @@ async function update(id, body) {
   }
 
   assignDefined(doc, body, UPDATE_FIELDS);
-  if (doc.moneySpent == null) doc.moneySpent = 0;
-  doc.clientPendingAmount = pendingClientAmount(doc.budgetAmount, doc.clientAmount);
-  if (body.status === 'completed' && !doc.actualEndDate) doc.actualEndDate = new Date();
-  assertDates(doc);
   await doc.save();
-  return withClientPending(doc);
+  return present(doc);
 }
 
 async function remove(id) {
@@ -259,15 +186,12 @@ async function summary(id) {
     summaryStats(projectId),
   ]);
 
-  const budgetAmount = project.budgetAmount ?? null;
-  const clientAmount = project.clientAmount ?? null;
-  const clientPendingAmount = pendingClientAmount(budgetAmount, clientAmount);
   const recordedCost = stats.expenseTotal + stats.salaryPaid;
   const { sites, sitesByStatus, employeeCount, expenseTotal, salaryPaid, salaryNet, vehicles } = stats;
 
   return {
-    project: withClientPending(project),
-    currency: project.currency || CURRENCY,
+    project,
+    currency: CURRENCY,
     sites: { total: sites, ...sitesByStatus },
     employeeCount,
     vehiclesAssigned: vehicles,
@@ -276,11 +200,11 @@ async function summary(id) {
       salaryNet,
       salaryAmountPaid: salaryPaid,
       recordedCost,
-      budgetAmount,
-      clientAmount,
-      clientPendingAmount,
-      moneySpent: project.moneySpent == null ? 0 : roundMoney(project.moneySpent),
-      budgetRemaining: budgetAmount === null ? null : budgetAmount - recordedCost,
+      budgetAmount: null,
+      clientAmount: null,
+      clientPendingAmount: null,
+      moneySpent: roundMoney(0),
+      budgetRemaining: null,
     },
   };
 }
