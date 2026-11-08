@@ -43,14 +43,14 @@ async function create(body) {
   const created = await repo.create({
     name: body.name,
     description: body.description || '',
-    status: body.status || '',
+    status: body.status !== undefined ? body.status : true,
   });
   return present(created);
 }
 
 async function list(query) {
   const filter = {};
-  if (query.status) filter.status = query.status;
+  if (query.status !== undefined) filter.status = query.status;
   if (query.search) {
     const pattern = containsRegex(query.search);
     filter.$or = [{ name: pattern }, { description: pattern }];

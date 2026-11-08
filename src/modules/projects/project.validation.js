@@ -10,18 +10,20 @@ const {
 const createBody = z.object({
   name: shortText(120),
   description: optionalText(2000),
-  status: optionalText(80),
+  status: z.boolean().optional(),
 });
 
 const updateBody = z.object({
   name: shortText(120).optional(),
   description: optionalText(2000),
-  status: optionalText(80),
+  status: z.boolean().optional(),
 });
 
 const list = requestSchema({
   query: listQuery({
-    status: optionalText(80),
+    status: z.enum(['true', 'false']).optional().transform((value) => (
+      value === undefined ? undefined : value === 'true'
+    )),
   }),
 });
 

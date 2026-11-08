@@ -66,7 +66,7 @@ async function overview() {
     attendance,
   ] = await Promise.all([
     Project.countDocuments({}),
-    Project.countDocuments({ status: 'active' }),
+    Project.countDocuments({ status: true }),
     Site.countDocuments({}),
     Site.countDocuments({ status: 'active' }),
     Employee.countDocuments({}),

@@ -333,14 +333,14 @@ const schemas = {
     {
       name: { type: 'string', maxLength: 120, example: 'Riverfront' },
       description: { type: 'string', maxLength: 2000 },
-      status: { type: 'string', maxLength: 80, example: 'active' },
+      status: { type: 'boolean', example: true, description: 'true = active, false = inactive' },
     },
     ['name']
   ),
   ProjectUpdate: schemaObject({
     name: { type: 'string', maxLength: 120 },
     description: { type: 'string', maxLength: 2000 },
-    status: { type: 'string', maxLength: 80 },
+    status: { type: 'boolean', description: 'true = active, false = inactive' },
   }),
 
   SiteCreate: schemaObject(
@@ -946,7 +946,7 @@ const schemas = {
     id: objectId,
     name: { type: 'string', example: 'Riverfront' },
     description: { type: 'string' },
-    status: { type: 'string', maxLength: 80, example: 'active' },
+    status: { type: 'boolean', example: true, description: 'true = active, false = inactive' },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1570,7 +1570,7 @@ const spec = {
     },
     '/projects': {
       get: operation('Projects', 'List projects', {
-        parameters: [...paging, query('status', { type: 'string', maxLength: 80 })],
+        parameters: [...paging, query('status', { type: 'boolean' })],
         data: 'Project',
         list: true,
       }),
@@ -1582,7 +1582,7 @@ const spec = {
         body: jsonBody(ref('ProjectCreate'), {
           name: 'Riverfront',
           description: 'Main civil package',
-          status: 'active',
+          status: true,
         }),
       }),
     },
@@ -1596,7 +1596,7 @@ const spec = {
       patch: operation('Projects', 'Update a project', {
         parameters: [pathParam()],
         data: 'Project',
-        body: jsonBody(ref('ProjectUpdate'), { status: 'on_hold', description: 'Paused for monsoon' }),
+        body: jsonBody(ref('ProjectUpdate'), { status: false, description: 'Paused for monsoon' }),
       }),
     },
     '/projects/delete/{id}': {
