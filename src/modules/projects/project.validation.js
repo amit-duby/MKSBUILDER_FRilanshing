@@ -1,4 +1,3 @@
-const { PROJECT_STATUS } = require('../../config/constants');
 const {
   z,
   requestSchema,
@@ -11,18 +10,18 @@ const {
 const createBody = z.object({
   name: shortText(120),
   description: optionalText(2000),
-  status: z.enum(PROJECT_STATUS).optional(),
+  status: optionalText(80),
 });
 
 const updateBody = z.object({
   name: shortText(120).optional(),
   description: optionalText(2000),
-  status: z.enum(PROJECT_STATUS).optional(),
+  status: optionalText(80),
 });
 
 const list = requestSchema({
   query: listQuery({
-    status: z.enum(PROJECT_STATUS).optional(),
+    status: optionalText(80),
   }),
 });
 

@@ -102,16 +102,6 @@ const updateMaintenanceBody = z.preprocess((value) => {
   message: 'Provide at least one field to update',
 }));
 
-const completeBody = z.object({
-  completedAt: dateValue.optional(),
-  completionNote: optionalText(500),
-});
-
-const maintenanceParams = z.object({
-  id: objectId,
-  maintenanceId: objectId,
-});
-
 module.exports = {
   list: requestSchema({
     query: listQuery({
@@ -151,12 +141,7 @@ module.exports = {
   assign: requestSchema({ params: idParams, body: assignBody }),
   release: requestSchema({ params: idParams, body: releaseBody }),
   maintenance: requestSchema({ body: maintenanceBody }),
-  updateMaintenance: requestSchema({ params: maintenanceParams, body: updateMaintenanceBody }),
-  updateMaintenanceById: requestSchema({
-    params: z.object({ maintenanceId: objectId }),
-    body: updateMaintenanceBody,
-  }),
-  complete: requestSchema({ params: maintenanceParams, body: completeBody }),
+  updateMaintenance: requestSchema({ params: idParams, body: updateMaintenanceBody }),
   pagedChild: requestSchema({
     params: idParams,
     query: listQuery(),

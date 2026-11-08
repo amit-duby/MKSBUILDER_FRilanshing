@@ -20,10 +20,15 @@ router.post(
   controller.addMaintenance
 );
 router.patch(
-  '/maintenance/:maintenanceId',
+  '/maintenance/update/:id',
   maintenanceUpload,
-  validate(schema.updateMaintenanceById),
+  validate(schema.updateMaintenance),
   controller.updateMaintenance
+);
+router.delete(
+  '/maintenance/delete/:id',
+  validate(schema.byId),
+  controller.removeMaintenance
 );
 router.get('/', validate(schema.list), controller.list);
 router.post('/', validate(schema.create), controller.create);
@@ -31,17 +36,6 @@ router.get('/:id/assignments', validate(schema.pagedChild), controller.listAssig
 router.post('/:id/assign', validate(schema.assign), controller.assign);
 router.post('/:id/release', validate(schema.release), controller.release);
 router.get('/:id/maintenance', validate(schema.pagedChild), controller.listMaintenance);
-router.patch(
-  '/:id/maintenance/:maintenanceId',
-  maintenanceUpload,
-  validate(schema.updateMaintenance),
-  controller.updateMaintenance
-);
-router.post(
-  '/:id/maintenance/:maintenanceId/complete',
-  validate(schema.complete),
-  controller.completeMaintenance
-);
 router.get('/:id', validate(schema.byId), controller.getById);
 router.patch('/:id', validate(schema.update), controller.update);
 router.delete('/:id', validate(schema.byId), controller.remove);

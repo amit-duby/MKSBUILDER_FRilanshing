@@ -333,14 +333,14 @@ const schemas = {
     {
       name: { type: 'string', maxLength: 120, example: 'Riverfront' },
       description: { type: 'string', maxLength: 2000 },
-      status: { type: 'string', enum: PROJECT_STATUS, example: 'active' },
+      status: { type: 'string', maxLength: 80, example: 'active' },
     },
     ['name']
   ),
   ProjectUpdate: schemaObject({
     name: { type: 'string', maxLength: 120 },
     description: { type: 'string', maxLength: 2000 },
-    status: { type: 'string', enum: PROJECT_STATUS },
+    status: { type: 'string', maxLength: 80 },
   }),
 
   SiteCreate: schemaObject(
@@ -717,10 +717,6 @@ const schemas = {
     payeeName: { type: 'string', maxLength: 120 },
     paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
   }),
-  MaintenanceComplete: schemaObject({
-    completedAt: dateString,
-    completionNote: { type: 'string', maxLength: 500, example: 'Done' },
-  }),
   SalaryCreate: schemaObject(
     {
       employeeId: objectId,
@@ -950,7 +946,7 @@ const schemas = {
     id: objectId,
     name: { type: 'string', example: 'Riverfront' },
     description: { type: 'string' },
-    status: { type: 'string', enum: PROJECT_STATUS },
+    status: { type: 'string', maxLength: 80, example: 'active' },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1151,8 +1147,6 @@ const schemas = {
     uploadReceipt: { type: 'string', nullable: true },
     description: { type: 'string' },
     nextDueDate: { ...dateString, nullable: true },
-    completedAt: { ...dateTimeString, nullable: true },
-    completionNote: { type: 'string' },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1576,7 +1570,7 @@ const spec = {
     },
     '/projects': {
       get: operation('Projects', 'List projects', {
-        parameters: [...paging, query('status', { type: 'string', enum: PROJECT_STATUS })],
+        parameters: [...paging, query('status', { type: 'string', maxLength: 80 })],
         data: 'Project',
         list: true,
       }),
@@ -2053,9 +2047,9 @@ const spec = {
         ),
       }),
     },
-    '/vehicles/maintenance/{maintenanceId}': {
+    '/vehicles/maintenance/update/{id}': {
       patch: operation('Vehicles', 'Update a maintenance log', {
-        parameters: [pathParam('maintenanceId')],
+        parameters: [pathParam()],
         data: 'Maintenance',
         body: bothBodies(
           ref('MaintenanceUpdate'),
@@ -2067,6 +2061,11 @@ const spec = {
           },
           ref('MaintenanceCreateForm')
         ),
+      }),
+    },
+    '/vehicles/maintenance/delete/{id}': {
+      delete: operation('Vehicles', 'Delete a maintenance log', {
+        parameters: [pathParam()],
       }),
     },
     '/vehicles/{id}': {
@@ -2107,24 +2106,6 @@ const spec = {
         parameters: [pathParam(), ...paging],
         data: 'Maintenance',
         list: true,
-      }),
-    },
-    '/vehicles/{id}/maintenance/{maintenanceId}': {
-      patch: operation('Vehicles', 'Update a vehicle maintenance log', {
-        parameters: [pathParam(), pathParam('maintenanceId')],
-        data: 'Maintenance',
-        body: bothBodies(
-          ref('MaintenanceUpdate'),
-          { paidTo: 'Sharma Motors', amount: 2800, modeOfPayment: 'upi' },
-          ref('MaintenanceCreateForm')
-        ),
-      }),
-    },
-    '/vehicles/{id}/maintenance/{maintenanceId}/complete': {
-      post: operation('Vehicles', 'Complete a maintenance log', {
-        parameters: [pathParam(), pathParam('maintenanceId')],
-        data: 'Maintenance',
-        body: jsonBody(ref('MaintenanceComplete'), { completionNote: 'Done' }),
       }),
     },
     '/accounts/summary': {

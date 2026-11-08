@@ -43,7 +43,7 @@ async function create(body) {
   const created = await repo.create({
     name: body.name,
     description: body.description || '',
-    status: body.status || 'planning',
+    status: body.status || '',
   });
   return present(created);
 }
@@ -71,20 +71,7 @@ async function getById(id) {
 }
 
 async function update(id, body) {
-  const completing = body.status === 'completed';
-  const [doc, activeSite] = await Promise.all([
-    getActive(id),
-    completing ? Site.exists({ project: id, status: 'active' }) : null,
-  ]);
-
-  if (completing && activeSite) {
-    throw new AppError(
-      'Complete or deactivate active sites before completing this project',
-      409,
-      'CONFLICT'
-    );
-  }
-
+  const doc = await getActive(id);
   assignDefined(doc, body, UPDATE_FIELDS);
   await doc.save();
   return present(doc);

@@ -23,8 +23,6 @@ const maintenanceSchema = new mongoose.Schema(
     uploadReceipt: { type: String, trim: true, default: null },
     description: { type: String, trim: true, maxlength: 500, default: '' },
     nextDueDate: { type: Date },
-    completedAt: { type: Date },
-    completionNote: { type: String, trim: true, maxlength: 500, default: '' },
     expense: { type: mongoose.Schema.Types.ObjectId, ref: 'Expense' },
   },
   { timestamps: true, collection: COLLECTIONS.vehicleMaintenance }

@@ -20,6 +20,7 @@ const MaintenanceCategory = require('./maintenanceCategory.model');
 const { removeStoredReceipt } = require('../../common/middleware/maintenanceUpload');
 const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
+const Expense = require('../accounts/expense.model');
 
 const repo = new BaseRepository(Vehicle);
 const SORT_FIELDS = ['registrationNumber', 'code', 'status', 'createdAt'];
@@ -126,8 +127,6 @@ function presentMaintenance(doc) {
     uploadReceipt: json.uploadReceipt || raw.singleImage || null,
     description: json.description || '',
     nextDueDate: json.nextDueDate || null,
-    completedAt: json.completedAt || null,
-    completionNote: json.completionNote || '',
     createdAt: json.createdAt,
     updatedAt: json.updatedAt,
   };
@@ -156,6 +155,11 @@ async function presentMaintenanceList(items) {
 async function getMutable(id) {
   const doc = await Vehicle.findById(id);
   if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
+  // Legacy rows used status "maintenance"; that must never block assignment.
+  if (doc.status === 'maintenance') {
+    doc.status = doc.currentAssignment ? 'assigned' : 'available';
+    await Vehicle.updateOne({ _id: doc._id }, { $set: { status: doc.status } });
+  }
   return doc;
 }
 
@@ -202,17 +206,24 @@ async function loadCurrentAssignment(vehicle) {
     .populate(ASSIGNMENT_POPULATE);
 }
 
+function presentStatus(status, hasAssignment) {
+  if (status === 'maintenance') return hasAssignment ? 'assigned' : 'available';
+  return status;
+}
+
 async function present(id) {
-  const doc = await Vehicle.findById(id)
-    .populate(VEHICLE_TYPE_POPULATE)
-    .populate({
+  const doc = await getMutable(id);
+  await Promise.all([
+    doc.populate(VEHICLE_TYPE_POPULATE),
+    doc.populate({
       path: 'currentAssignment',
       populate: ASSIGNMENT_POPULATE,
-    });
-  if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
+    }),
+  ]);
 
   const assignment = await loadCurrentAssignment(doc);
   const json = doc.toJSON();
+  json.status = presentStatus(json.status, Boolean(assignment));
   json.currentAssignment = presentAssignmentDetail(assignment);
   return json;
 }
@@ -241,13 +252,18 @@ async function recordExpense(payload, user) {
   return expenseService.create(payload, user);
 }
 
-async function voidExpense(expense) {
-  if (!expense || expense.isVoid) return;
-  expense.isVoid = true;
-  expense.voidedAt = new Date();
-  expense.voidReason = 'Linked vehicle log could not be saved';
-  await expense.save();
+async function voidExpense(expense, reason = 'Linked vehicle log could not be saved') {
+  if (!expense) return;
+  const doc = typeof expense.isVoid === 'boolean'
+    ? expense
+    : await Expense.findById(expense);
+  if (!doc || doc.isVoid) return;
+  doc.isVoid = true;
+  doc.voidedAt = new Date();
+  doc.voidReason = reason;
+  await doc.save();
 }
+
 
 async function loadAssignmentTargets(body) {
   const [site, driver] = await Promise.all([
@@ -378,6 +394,7 @@ const service = {
       return {
         ...item,
         id,
+        status: presentStatus(item.status, Boolean(assignment)),
         vehicleType: presentVehicleType(item.vehicleType),
         currentAssignment: presentAssignmentDetail(assignment),
       };
@@ -394,8 +411,8 @@ const service = {
     const doc = await getMutable(id);
     let vehicleType;
     if (body.status && body.status !== doc.status) {
-      if (doc.status === 'assigned' || doc.status === 'maintenance') {
-        throw new AppError('Release the vehicle or complete maintenance before changing status', 409, 'CONFLICT');
+      if (doc.status === 'assigned') {
+        throw new AppError('Release the vehicle before changing status', 409, 'CONFLICT');
       }
       doc.status = body.status;
     }
@@ -453,8 +470,11 @@ const service = {
 
   async assign(id, body) {
     const vehicle = await getMutable(id);
-    if (vehicle.status !== 'available') {
-      throw new AppError('Only an available vehicle can be assigned', 409, 'CONFLICT');
+    if (vehicle.status === 'inactive') {
+      throw new AppError('Inactive vehicles cannot be assigned', 409, 'CONFLICT');
+    }
+    if (vehicle.currentAssignment || vehicle.status === 'assigned') {
+      throw new AppError('Vehicle is already assigned', 409, 'CONFLICT');
     }
 
     const { site, driver } = await loadAssignmentTargets(body);
@@ -574,9 +594,6 @@ const service = {
 
   async addMaintenance(id, body, user) {
     const vehicle = await getMutable(id);
-    if (vehicle.status === 'assigned') {
-      throw new AppError('Release the vehicle before sending it for maintenance', 409, 'CONFLICT');
-    }
     if (vehicle.status === 'inactive') {
       throw new AppError('Inactive vehicles cannot be sent for maintenance', 400, 'BAD_REQUEST');
     }
@@ -625,8 +642,6 @@ const service = {
         nextDueDate: body.nextDueDate,
         expense: expense && expense._id,
       });
-      // Status-only update avoids re-validating legacy vehicles missing vehicleType.
-      await Vehicle.updateOne({ _id: vehicle._id }, { $set: { status: 'maintenance' } });
       return log.populate('maintenanceCategory', 'name description status');
     } catch (error) {
       await voidExpense(expense);
@@ -665,10 +680,8 @@ const service = {
     return this.listAllMaintenance({ ...query, vehicleId: id });
   },
 
-  async updateMaintenance(id, maintenanceId, body, user) {
-    const filter = { _id: maintenanceId };
-    if (id) filter.vehicle = id;
-    const log = await Maintenance.findOne(filter);
+  async updateMaintenance(id, body, user) {
+    const log = await Maintenance.findById(id);
     if (!log) throw new AppError('Maintenance log not found', 404, 'NOT_FOUND');
 
     if (body.maintenanceCategoryId) {
@@ -689,10 +702,6 @@ const service = {
     assignDefined(log, body, ['paidTo', 'date', 'amount', 'modeOfPayment', 'reference', 'description']);
     if (Object.prototype.hasOwnProperty.call(body, 'nextDueDate')) {
       log.nextDueDate = body.nextDueDate || undefined;
-    }
-
-    if (log.completedAt && log.date && log.completedAt < log.date) {
-      throw new AppError('Maintenance date cannot be after the completion time', 400, 'BAD_REQUEST');
     }
 
     if (body.uploadReceipt && body.uploadReceipt !== log.uploadReceipt) {
@@ -722,32 +731,14 @@ const service = {
     return presentMaintenance(log);
   },
 
-  async completeMaintenance(id, maintenanceId, body) {
-    const vehicle = await getMutable(id);
-    const log = await Maintenance.findOne({ _id: maintenanceId, vehicle: id });
+  async removeMaintenance(id) {
+    const log = await Maintenance.findById(id);
     if (!log) throw new AppError('Maintenance log not found', 404, 'NOT_FOUND');
-    if (log.completedAt) throw new AppError('Maintenance is already complete', 400, 'BAD_REQUEST');
 
-    const completedAt = body.completedAt || new Date();
-    if (log.date && completedAt < log.date) {
-      throw new AppError('Completion time must be on or after the maintenance date', 400, 'BAD_REQUEST');
-    }
-
-    log.completedAt = completedAt;
-    log.completionNote = body.completionNote || '';
-    await log.save();
-
-    const stillOpen = await Maintenance.exists({
-      vehicle: id,
-      completedAt: null,
-      _id: { $ne: log._id },
-    });
-
-    if (!stillOpen && vehicle.status === 'maintenance') {
-      await Vehicle.updateOne({ _id: vehicle._id }, { $set: { status: 'available' } });
-    }
-
-    return log;
+    removeStoredReceipt(log.uploadReceipt);
+    await voidExpense(log.expense, 'Linked maintenance log was deleted');
+    await log.deleteOne();
+    return { id };
   },
 
 };

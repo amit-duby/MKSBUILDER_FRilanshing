@@ -52,18 +52,13 @@ const listMaintenance = asyncHandler(async (req, res) => {
 });
 
 const updateMaintenance = asyncHandler(async (req, res) => {
-  const data = await service.updateMaintenance(
-    req.params.id,
-    req.params.maintenanceId,
-    req.body,
-    req.user
-  );
+  const data = await service.updateMaintenance(req.params.id, req.body, req.user);
   return ok(res, data, 'Maintenance updated');
 });
 
-const completeMaintenance = asyncHandler(async (req, res) => {
-  const data = await service.completeMaintenance(req.params.id, req.params.maintenanceId, req.body);
-  return ok(res, data, 'Maintenance completed');
+const removeMaintenance = asyncHandler(async (req, res) => {
+  const data = await service.removeMaintenance(req.params.id);
+  return ok(res, data, 'Maintenance deleted');
 });
 
 module.exports = {
@@ -77,5 +72,5 @@ module.exports = {
   listAllMaintenance,
   listMaintenance,
   updateMaintenance,
-  completeMaintenance,
+  removeMaintenance,
 };

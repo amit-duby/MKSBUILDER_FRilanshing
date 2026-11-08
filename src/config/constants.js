@@ -14,7 +14,7 @@ const MATERIAL_CONDITIONS = ['new', 'old', 'scrap'];
 const ADJUSTMENT_DIRECTIONS = ['increase', 'decrease'];
 const UNITS = ['nos', 'bag', 'kg', 'ton', 'cum', 'sqm', 'rmt', 'liter', 'box', 'bundle', 'set'];
 
-const VEHICLE_STATUS = ['available', 'assigned', 'maintenance', 'inactive',];
+const VEHICLE_STATUS = ['available', 'assigned', 'inactive'];
 const FUEL_TYPES = ['diesel', 'petrol', 'cng', 'electric', 'other'];
 const MAINTENANCE_TYPES = ['service', 'repair', 'tyre', 'insurance', 'other'];
 const MAINTENANCE_CATEGORY_STATUS = ['active', 'inactive'];

@@ -3,6 +3,7 @@ const Project = require('../projects/project.model');
 const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
 const Vehicle = require('../vehicles/vehicle.model');
+const Maintenance = require('../vehicles/maintenance.model');
 const Item = require('../inventory/item.model');
 const { startOfUtcDay } = require('../../common/utils/helpers');
 const { summary } = require('../accounts/statement.service');
@@ -72,7 +73,7 @@ async function overview() {
     Employee.countDocuments({ status: 'active' }),
     Vehicle.countDocuments({ status: 'available' }),
     Vehicle.countDocuments({ status: 'assigned' }),
-    Vehicle.countDocuments({ status: 'maintenance' }),
+    Maintenance.countDocuments({}),
     lowStockCount(),
     summary({}),
     attendanceToday(),
