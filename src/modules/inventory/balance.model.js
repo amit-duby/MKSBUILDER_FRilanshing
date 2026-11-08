@@ -10,9 +10,10 @@ const stockBalanceSchema = new mongoose.Schema(
       required: true,
     },
     location: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'StockLocation',
+      type: String,
       required: true,
+      trim: true,
+      maxlength: 120,
     },
     quantity: { type: Number, required: true, default: 0, min: 0 },
   },

@@ -10,8 +10,6 @@ const requireDoc = require('../../common/utils/requireDoc');
 const Site = require('./site.model');
 const Project = require('../projects/project.model');
 const Employee = require('../employees/employee.model');
-const StockLocation = require('../inventory/location.model');
-const StockBalance = require('../inventory/balance.model');
 const EmployeeAssignment = require('../employees/assignment.model');
 
 const repo = new BaseRepository(Site);
@@ -90,20 +88,6 @@ async function create(body) {
     notes: body.notes || '',
   });
 
-  try {
-    await StockLocation.create({
-      code: await nextCode('stock_location', 'LOC'),
-      name: `${site.name} Store`.slice(0, 120),
-      type: 'site_store',
-      site: site._id,
-      isSystem: false,
-      isActive: true,
-    });
-  } catch (error) {
-    await Site.deleteOne({ _id: site._id });
-    throw error;
-  }
-
   return present(site, project, incharge);
 }
 
@@ -153,34 +137,12 @@ async function update(id, body) {
   ]);
   assertDates(doc);
   await doc.save();
-
-  if (body.name) {
-    await StockLocation.updateOne(
-      { site: doc._id },
-      { $set: { name: `${doc.name} Store`.slice(0, 120) } }
-    );
-  }
-
   return present(doc, undefined, incharge);
-}
-
-async function assertStockClear(siteId) {
-  const location = await StockLocation.findOne({ site: siteId });
-  if (!location) return null;
-
-  const remaining = await StockBalance.exists({ location: location._id, quantity: { $gt: 0 } });
-  if (remaining) {
-    throw new AppError('Transfer remaining site stock before deleting this site', 409, 'CONFLICT');
-  }
-  return location;
 }
 
 async function remove(id) {
   const doc = await Site.findById(id).select('_id');
   if (!doc) throw new AppError('Site not found', 404, 'NOT_FOUND');
-
-  const location = await assertStockClear(doc._id);
-  if (location) await location.deleteOne();
 
   await EmployeeAssignment.deleteMany({ site: doc._id });
   await doc.deleteOne();

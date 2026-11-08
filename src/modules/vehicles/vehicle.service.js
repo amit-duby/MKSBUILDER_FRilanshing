@@ -126,7 +126,6 @@ function presentMaintenance(doc) {
     reference: json.reference || raw.referenceNo || '',
     uploadReceipt: json.uploadReceipt || raw.singleImage || null,
     description: json.description || '',
-    nextDueDate: json.nextDueDate || null,
     createdAt: json.createdAt,
     updatedAt: json.updatedAt,
   };
@@ -639,7 +638,6 @@ const service = {
         reference: body.reference || '',
         uploadReceipt: body.uploadReceipt || null,
         description,
-        nextDueDate: body.nextDueDate,
         expense: expense && expense._id,
       });
       return log.populate('maintenanceCategory', 'name description status');
@@ -700,9 +698,6 @@ const service = {
     }
 
     assignDefined(log, body, ['paidTo', 'date', 'amount', 'modeOfPayment', 'reference', 'description']);
-    if (Object.prototype.hasOwnProperty.call(body, 'nextDueDate')) {
-      log.nextDueDate = body.nextDueDate || undefined;
-    }
 
     if (body.uploadReceipt && body.uploadReceipt !== log.uploadReceipt) {
       removeStoredReceipt(log.uploadReceipt);

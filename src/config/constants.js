@@ -47,7 +47,6 @@ const COLLECTIONS = {
   employees: 'employees',
   employeeAssignments: 'employee_assignments',
   inventoryItems: 'inventory_items',
-  stockLocations: 'stock_locations',
   stockBalances: 'stock_balances',
   stockMovements: 'stock_movements',
   vehicles: 'vehicles',

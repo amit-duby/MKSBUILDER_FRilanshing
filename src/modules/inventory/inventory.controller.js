@@ -11,14 +11,6 @@ const items = buildController(inventory.items, {
   removed: 'Item deleted',
 });
 
-const locations = buildController(inventory.locations, {
-  created: 'Stock location created',
-  listed: 'Stock locations fetched',
-  fetched: 'Stock location fetched',
-  updated: 'Stock location updated',
-  removed: 'Stock location deleted',
-});
-
 const listStock = asyncHandler(async (req, res) => {
   const result = await inventory.stock.list(req.query);
   return ok(res, {
@@ -48,6 +40,11 @@ const createMovement = asyncHandler(async (req, res) => {
   return res.status(201).json({ success: true, message: 'Stock movement recorded', data });
 });
 
+const createIssue = asyncHandler(async (req, res) => {
+  const data = await inventory.movements.createIssue(req.body, req.user);
+  return res.status(201).json({ success: true, message: 'Stock issue recorded', data });
+});
+
 const getMovement = asyncHandler(async (req, res) => {
   const data = await inventory.movements.getById(req.params.id);
   return ok(res, data, 'Stock movement fetched');
@@ -68,16 +65,28 @@ const updateIssue = asyncHandler(async (req, res) => {
   return ok(res, data, 'Stock issue updated');
 });
 
+const removeMovement = asyncHandler(async (req, res) => {
+  await inventory.movements.remove(req.params.id);
+  return ok(res, null, 'Stock movement deleted');
+});
+
+const removeIssue = asyncHandler(async (req, res) => {
+  await inventory.movements.removeIssue(req.params.id);
+  return ok(res, null, 'Stock issue deleted');
+});
+
 module.exports = {
   items,
-  locations,
   listStock,
   lowStock,
   listMovements,
   listIssues,
   createMovement,
+  createIssue,
   getMovement,
   getIssue,
   updateMovement,
   updateIssue,
+  removeMovement,
+  removeIssue,
 };

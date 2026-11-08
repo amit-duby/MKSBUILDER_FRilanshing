@@ -45,7 +45,6 @@ const FIELD_ALIASES = {
   categoryid: 'maintenanceCategoryId',
   paidto: 'paidTo',
   modeofpayment: 'modeOfPayment',
-  nextduedate: 'nextDueDate',
   recordexpense: 'recordExpense',
   payeename: 'payeeName',
   paymentmodenote: 'paymentModeNote',

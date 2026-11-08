@@ -1,36 +1,36 @@
 const AppError = require('../../common/errors/AppError');
 const { roundQuantity } = require('../../common/utils/quantity');
 
-function planStockMovement({ type, quantity, direction, fromLocationId, toLocationId }) {
+function planStockMovement({ type, quantity, direction, fromLocation, toLocation }) {
   const qty = roundQuantity(quantity);
   if (!(qty > 0)) {
     throw new AppError('Quantity must be greater than zero', 400, 'BAD_REQUEST');
   }
 
-  const single = (locationId) => [{
-    locationId: locationId ? String(locationId) : null,
+  const single = (location) => [{
+    location: location || null,
     quantity: qty,
   }];
 
   if (type === 'receipt' || type === 'return') {
-    return { quantity: qty, increase: single(toLocationId), decrease: [] };
+    return { quantity: qty, increase: single(toLocation), decrease: [] };
   }
 
   if (type === 'issue') {
-    return { quantity: qty, increase: [], decrease: single(fromLocationId) };
+    return { quantity: qty, increase: [], decrease: single(fromLocation) };
   }
 
   if (type === 'transfer') {
-    if (!fromLocationId || !toLocationId) {
+    if (!fromLocation || !toLocation) {
       throw new AppError('Transfer needs both a source and a destination location', 400, 'BAD_REQUEST');
     }
-    if (String(fromLocationId) === String(toLocationId)) {
+    if (String(fromLocation).toLowerCase() === String(toLocation).toLowerCase()) {
       throw new AppError('Source and destination locations must be different', 400, 'BAD_REQUEST');
     }
     return {
       quantity: qty,
-      increase: single(toLocationId),
-      decrease: single(fromLocationId),
+      increase: single(toLocation),
+      decrease: single(fromLocation),
     };
   }
 
@@ -38,12 +38,12 @@ function planStockMovement({ type, quantity, direction, fromLocationId, toLocati
     if (!direction) {
       throw new AppError('Adjustment needs a direction', 400, 'BAD_REQUEST');
     }
-    const locationId = toLocationId || fromLocationId || null;
+    const location = toLocation || fromLocation || null;
     if (direction === 'increase') {
-      return { quantity: qty, increase: single(locationId), decrease: [] };
+      return { quantity: qty, increase: single(location), decrease: [] };
     }
     if (direction === 'decrease') {
-      return { quantity: qty, increase: [], decrease: single(locationId) };
+      return { quantity: qty, increase: [], decrease: single(location) };
     }
     throw new AppError('Adjustment direction must be increase or decrease', 400, 'BAD_REQUEST');
   }

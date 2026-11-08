@@ -10,7 +10,6 @@ const STALE_INDEXES = {
   [COLLECTIONS.vehicles]: ['isDeleted_1'],
   [COLLECTIONS.vehicleAssignments]: ['project_1', 'project_1_releasedAt_1'],
   [COLLECTIONS.inventoryItems]: ['isDeleted_1'],
-  [COLLECTIONS.stockLocations]: ['isDeleted_1'],
 };
 
 async function dropStaleIndexes() {

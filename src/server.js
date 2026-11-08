@@ -2,7 +2,6 @@ const { getConfig } = require('./config/env');
 const logger = require('./common/utils/logger');
 const { connectDatabase, disconnectDatabase } = require('./config/database');
 const app = require('./app');
-const { ensureMainStore } = require('./seed/ensureMainStore');
 const { dropStaleIndexes } = require('./seed/dropStaleIndexes');
 
 const config = getConfig();
@@ -14,7 +13,6 @@ async function start() {
 
   await connectDatabase(config.MONGODB_URI);
   await dropStaleIndexes();
-  await ensureMainStore();
 
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT }, 'Construction ERP API listening');

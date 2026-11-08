@@ -1,10 +1,10 @@
 const {
   UNITS,
+  STOCK_LOCATION_TYPES,
   MOVEMENT_TYPES,
   MATERIAL_CONDITIONS,
   ADJUSTMENT_DIRECTIONS,
   PAYMENT_MODE_NOTES,
-  STOCK_LOCATION_TYPES,
 } = require('../../config/constants');
 const {
   z,
@@ -40,33 +40,21 @@ const itemBody = z.object({
 
 const itemUpdate = itemBody.partial();
 
-const locationBody = z.object({
-  name: shortText(120),
-  type: z.enum(STOCK_LOCATION_TYPES),
-  siteId: objectId.optional(),
-  isActive: z.boolean().optional(),
-}).superRefine((data, ctx) => {
-  if (data.type === 'site_store' && !data.siteId) {
-    ctx.addIssue({ code: 'custom', path: ['siteId'], message: 'A site store must be linked to a site' });
-  }
-  if (data.type === 'central_store' && data.siteId) {
-    ctx.addIssue({ code: 'custom', path: ['siteId'], message: 'A central store cannot be linked to a site' });
-  }
-});
+const withVehicleTypeAlias = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const body = { ...value };
+  if (!body.vehicleTypeId && body.vehicleType) body.vehicleTypeId = body.vehicleType;
+  return body;
+};
 
-const locationUpdate = z.object({
-  name: shortText(120).optional(),
-  isActive: z.boolean().optional(),
-});
-
-const movementBody = z.object({
+const movementBody = z.preprocess(withVehicleTypeAlias, z.object({
   type: z.enum(MOVEMENT_TYPES),
   itemId: objectId,
   quantity,
   direction: z.enum(ADJUSTMENT_DIRECTIONS).optional(),
-  fromLocationId: objectId.optional(),
-  toLocationId: objectId.optional(),
-  projectId: objectId.optional(),
+  fromLocation: optionalText(120),
+  toLocation: optionalText(120),
+  locationType: z.enum(STOCK_LOCATION_TYPES).optional(),
   siteId: objectId.optional(),
   employeeId: objectId.optional(),
   vehicleTypeId: objectId.optional(),
@@ -75,12 +63,13 @@ const movementBody = z.object({
   condition: z.enum(MATERIAL_CONDITIONS).optional(),
   billNo: optionalText(80),
   challanNo: optionalText(80),
-  materialReceiptPhoto: z.string().trim().min(1).max(500).nullable().optional(),
+  materialReceiptPhoto: z.string().trim().min(1).nullable().optional(),
   paymentMode: z.enum(PAYMENT_MODE_NOTES).optional(),
   address: optionalText(300),
   movementDate: dateValue.optional(),
   reference: optionalText(80),
   remarks: optionalText(500),
+  note: optionalText(500),
 }).superRefine((data, ctx) => {
   if (data.type === 'receipt' && !(data.vendorName && data.vendorName.trim())) {
     ctx.addIssue({ code: 'custom', path: ['vendorName'], message: 'Vendor name is required for an inward receipt' });
@@ -94,13 +83,28 @@ const movementBody = z.object({
   if (data.type === 'receipt' && !data.paymentMode) {
     ctx.addIssue({ code: 'custom', path: ['paymentMode'], message: 'Mode of payment is required for an inward receipt' });
   }
-  if (data.type === 'transfer' && (!data.fromLocationId || !data.toLocationId)) {
-    ctx.addIssue({ code: 'custom', path: ['toLocationId'], message: 'Transfer needs both a source and a destination location' });
+  if (data.type === 'transfer' && (!(data.fromLocation && data.fromLocation.trim()) || !(data.toLocation && data.toLocation.trim()))) {
+    ctx.addIssue({ code: 'custom', path: ['toLocation'], message: 'Transfer needs both a source and a destination location' });
   }
   if (data.type === 'adjustment' && !data.direction) {
     ctx.addIssue({ code: 'custom', path: ['direction'], message: 'Adjustment direction is required' });
   }
-});
+}));
+
+const issueBody = z.preprocess(withVehicleTypeAlias, z.object({
+  type: z.literal('issue').optional().default('issue'),
+  itemId: objectId,
+  quantity,
+  fromLocation: optionalText(120),
+  toLocation: optionalText(120),
+  locationType: z.enum(STOCK_LOCATION_TYPES).optional(),
+  siteId: objectId.optional(),
+  employeeId: objectId.optional(),
+  vehicleTypeId: objectId.optional(),
+  movementDate: dateValue.optional(),
+  remarks: optionalText(500),
+  note: optionalText(500),
+}));
 
 module.exports = {
   listItems: requestSchema({
@@ -111,26 +115,18 @@ module.exports = {
   }),
   createItem: requestSchema({ body: itemBody }),
   updateItem: requestSchema({ params: idParams, body: itemUpdate }),
-  listLocations: requestSchema({
-    query: listQuery({
-      type: z.enum(STOCK_LOCATION_TYPES).optional(),
-      siteId: objectId.optional(),
-    }),
-  }),
-  createLocation: requestSchema({ body: locationBody }),
-  updateLocation: requestSchema({ params: idParams, body: locationUpdate }),
   byId: requestSchema({ params: idParams }),
   listStock: requestSchema({
     query: listQuery({
       itemId: objectId.optional(),
-      locationId: objectId.optional(),
+      location: optionalText(120),
     }),
   }),
   listMovements: requestSchema({
     query: listQuery({
       itemId: objectId.optional(),
-      locationId: objectId.optional(),
-      projectId: objectId.optional(),
+      location: optionalText(120),
+      locationType: z.enum(STOCK_LOCATION_TYPES).optional(),
       siteId: objectId.optional(),
       employeeId: objectId.optional(),
       vehicleTypeId: objectId.optional(),
@@ -141,8 +137,8 @@ module.exports = {
   listIssues: requestSchema({
     query: listQuery({
       itemId: objectId.optional(),
-      locationId: objectId.optional(),
-      projectId: objectId.optional(),
+      location: optionalText(120),
+      locationType: z.enum(STOCK_LOCATION_TYPES).optional(),
       siteId: objectId.optional(),
       employeeId: objectId.optional(),
       vehicleTypeId: objectId.optional(),
@@ -151,15 +147,16 @@ module.exports = {
     }),
   }),
   createMovement: requestSchema({ body: movementBody }),
+  createIssue: requestSchema({ body: issueBody }),
   updateMovement: requestSchema({
     params: idParams,
     body: z.object({
       itemId: objectId.optional(),
       quantity: quantity.optional(),
       direction: z.enum(ADJUSTMENT_DIRECTIONS).optional(),
-      fromLocationId: objectId.optional(),
-      toLocationId: objectId.optional(),
-      projectId: objectId.nullable().optional(),
+      fromLocation: optionalText(120),
+      toLocation: optionalText(120),
+      locationType: z.enum(STOCK_LOCATION_TYPES).optional(),
       siteId: objectId.nullable().optional(),
       employeeId: objectId.nullable().optional(),
       vehicleTypeId: objectId.nullable().optional(),
@@ -168,27 +165,30 @@ module.exports = {
       condition: z.enum(MATERIAL_CONDITIONS).optional(),
       billNo: optionalText(80),
       challanNo: optionalText(80),
-      materialReceiptPhoto: z.string().trim().min(1).max(500).nullable().optional(),
+      materialReceiptPhoto: z.string().trim().min(1).nullable().optional(),
       paymentMode: z.enum(PAYMENT_MODE_NOTES).optional(),
       address: optionalText(300),
       movementDate: dateValue.optional(),
       reference: optionalText(80),
       remarks: optionalText(500),
+      note: optionalText(500),
     }),
   }),
   updateIssue: requestSchema({
     params: idParams,
-    body: z.object({
+    body: z.preprocess(withVehicleTypeAlias, z.object({
+      type: z.literal('issue').optional(),
       itemId: objectId.optional(),
       quantity: quantity.optional(),
-      fromLocationId: objectId.optional(),
-      projectId: objectId.nullable().optional(),
+      fromLocation: optionalText(120),
+      toLocation: optionalText(120),
+      locationType: z.enum(STOCK_LOCATION_TYPES).optional(),
       siteId: objectId.nullable().optional(),
       employeeId: objectId.nullable().optional(),
       vehicleTypeId: objectId.nullable().optional(),
       movementDate: dateValue.optional(),
-      reference: optionalText(80),
       remarks: optionalText(500),
-    }),
+      note: optionalText(500),
+    })),
   }),
 };

@@ -16,27 +16,70 @@ const {
   endOfUtcDay,
 } = require('../../common/utils/helpers');
 const { planStockMovement, reversePlan, planQuantity } = require('./stockPlan');
+const { removeStoredReceipt } = require('../../common/middleware/movementUpload');
 const Item = require('./item.model');
-const Location = require('./location.model');
 const Balance = require('./balance.model');
 const Movement = require('./movement.model');
-const Project = require('../projects/project.model');
 const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
 
 const itemRepo = new BaseRepository(Item);
-const locationRepo = new BaseRepository(Location);
+const DEFAULT_LOCATION = 'Main Store';
 const ITEM_SORT = ['name', 'sku', 'code', 'category', 'createdAt'];
-const LOCATION_SORT = ['name', 'code', 'type', 'createdAt'];
 const MOVEMENT_SORT = ['movementDate', 'code', 'createdAt', 'type'];
+const MOVEMENT_LIST_SELECT = [
+  'type',
+  'item',
+  'quantity',
+  'fromLocation',
+  'toLocation',
+  'locationType',
+  'vendorName',
+  'condition',
+  'billNo',
+  'challanNo',
+  'paymentMode',
+  'unitCost',
+  'totalAmount',
+  'movementDate',
+  'site',
+  'materialReceiptPhoto',
+  'address',
+  'remarks',
+  'note',
+].join(' ');
+
+const ISSUE_LIST_SELECT = [
+  'type',
+  'item',
+  'quantity',
+  'fromLocation',
+  'toLocation',
+  'locationType',
+  'site',
+  'employee',
+  'vehicleType',
+  'movementDate',
+  'remarks',
+  'note',
+].join(' ');
+
 const MOVEMENT_POPULATE = [
-  { path: 'item', select: 'name sku unit code' },
-  { path: 'fromLocation', select: 'name code type' },
-  { path: 'toLocation', select: 'name code type' },
-  { path: 'project', select: 'name' },
+  { path: 'item', select: 'name sku unit code category' },
+  { path: 'site', select: 'name code' },
+];
+
+const ISSUE_POPULATE = [
+  { path: 'item', select: 'name sku unit code category' },
   { path: 'site', select: 'name code' },
   { path: 'employee', select: 'fullName code designation' },
+  { path: 'vehicleType', select: 'name description status' },
 ];
+
+function normalizeLocation(value) {
+  if (value == null) return '';
+  return String(value).trim().replace(/\s+/g, ' ').slice(0, 120);
+}
 
 function sessionOptions(session, extra = {}) {
   return session ? { ...extra, session } : extra;
@@ -48,64 +91,143 @@ async function getItem(id) {
   return doc;
 }
 
-function publicItem(item) {
-  if (!item) return null;
+function asId(value) {
+  if (value == null || value === '') return null;
+  if (typeof value === 'object') {
+    if (typeof value.toHexString === 'function') return value.toHexString();
+    if (value._id && value._id !== value) return asId(value._id);
+    if (typeof value.toString === 'function') {
+      const text = value.toString();
+      if (text && text !== '[object Object]') return text;
+    }
+    return null;
+  }
+  return String(value);
+}
+
+function presentMoneyFields(json) {
+  const unitCost = json.unitCost == null ? null : Number(json.unitCost);
+  const quantity = Number(json.quantity) || 0;
+  const totalAmount = json.totalAmount != null
+    ? Number(json.totalAmount)
+    : (unitCost == null ? 0 : roundMoney(quantity * unitCost));
+  return { quantity, unitCost, totalAmount };
+}
+
+function presentItemDetails(value) {
+  const id = asId(value);
+  if (!id) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !value.name) {
+    return { id };
+  }
   return {
-    id: item.id,
-    name: item.name,
-    sku: item.sku,
-    unit: item.unit,
-    code: item.code,
+    id,
+    name: value.name || '',
+    sku: value.sku || '',
+    unit: value.unit || null,
+    code: value.code || '',
+    category: value.category || '',
   };
 }
 
-function publicLocation(location) {
-  if (!location) return null;
+function presentSiteName(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value) && value.name != null) {
+    return value.name || '';
+  }
+  return null;
+}
+
+function presentSiteDetails(value) {
+  const id = asId(value);
+  if (!id) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.name == null) {
+    return { id };
+  }
   return {
-    id: location.id,
-    name: location.name,
-    code: location.code,
-    type: location.type,
+    id,
+    name: value.name || '',
+    code: value.code || '',
   };
 }
 
-function publicNamed(doc) {
-  if (!doc) return null;
+function presentEmployeeDetails(value) {
+  const id = asId(value);
+  if (!id) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || !(value.fullName || value.name)) {
+    return { id };
+  }
   return {
-    id: doc.id,
-    name: doc.name,
-    code: doc.code,
+    id,
+    fullName: value.fullName || value.name || '',
+    code: value.code || '',
+    designation: value.designation || '',
   };
 }
 
-function presentEmployee(employee) {
-  if (!employee) return null;
+function presentVehicleTypeDetails(value) {
+  const id = asId(value);
+  if (!id) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value) || value.name == null) {
+    return { id };
+  }
   return {
-    id: employee.id,
-    fullName: employee.fullName,
-    code: employee.code,
-    designation: employee.designation,
+    id,
+    name: value.name || '',
+    description: value.description || '',
+    status: value.status || null,
   };
 }
 
-function withVehicleTypeId(doc) {
+function presentMovementListItem(doc) {
   const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
-  json.vehicleTypeId = json.vehicleType ? String(json.vehicleType.id || json.vehicleType) : null;
-  delete json.vehicleType;
-  return json;
+  const { quantity, unitCost, totalAmount } = presentMoneyFields(json);
+  const item = presentItemDetails(json.item);
+
+  return {
+    id: asId(json.id || json._id),
+    type: json.type,
+    itemId: item ? item.id : null,
+    item,
+    quantity,
+    fromLocation: json.fromLocation || '',
+    toLocation: json.toLocation || '',
+    locationType: json.locationType || null,
+    vendorName: json.vendorName || '',
+    condition: json.condition || null,
+    billNo: json.billNo || '',
+    challanNo: json.challanNo || '',
+    paymentMode: json.paymentMode || null,
+    unitCost,
+    totalAmount,
+    movementDate: json.movementDate || null,
+    siteId: asId(json.site),
+    siteName: presentSiteName(json.site),
+    materialReceiptPhoto: json.materialReceiptPhoto || null,
+    address: json.address || '',
+    remarks: json.remarks || '',
+    note: json.note || '',
+  };
 }
 
-function presentMovement(doc, refs = {}) {
-  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : doc;
-  json.item = publicItem(refs.item);
-  json.fromLocation = publicLocation(refs.fromLocation);
-  json.toLocation = publicLocation(refs.toLocation);
-  json.project = publicNamed(refs.project);
-  json.site = publicNamed(refs.site);
-  json.employee = presentEmployee(refs.employee);
-  json.vehicleTypeId = json.vehicleType ? String(json.vehicleType) : null;
-  delete json.vehicleType;
-  return json;
+function presentIssueListItem(doc) {
+  const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
+  const quantity = Number(json.quantity) || 0;
+
+  return {
+    id: asId(json.id || json._id),
+    type: json.type || 'issue',
+    item: presentItemDetails(json.item),
+    quantity,
+    fromLocation: json.fromLocation || '',
+    toLocation: json.toLocation || '',
+    locationType: json.locationType || null,
+    site: presentSiteDetails(json.site),
+    employee: presentEmployeeDetails(json.employee),
+    vehicleType: presentVehicleTypeDetails(json.vehicleType),
+    movementDate: json.movementDate || null,
+    remarks: json.remarks || '',
+    note: json.note || '',
+  };
 }
 
 async function relatedItemIds(itemOrId) {
@@ -296,102 +418,12 @@ const items = {
   },
 };
 
-async function getLocation(id) {
-  const doc = await Location.findById(id).populate('site', 'name code status').lean({ virtuals: true });
-  if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
-  if (doc._id && doc.id == null) doc.id = String(doc._id);
-  if (doc.site && doc.site._id && doc.site.id == null) doc.site.id = String(doc.site._id);
-  return doc;
-}
-
-const locations = {
-  async create(body) {
-    const codeJob = nextCode('stock_location', 'LOC');
-    if (body.type === 'site_store') {
-      const site = await requireDoc(Site, body.siteId, 'Site');
-      if (site.status !== 'active') {
-        throw new AppError('Site store can only be added for an active site', 400, 'BAD_REQUEST');
-      }
-      const [existing, code] = await Promise.all([
-        Location.findOne({ site: site._id }).select('_id').lean(),
-        codeJob,
-      ]);
-      if (existing) {
-        throw new AppError('This site already has a stock location', 409, 'CONFLICT');
-      }
-      return Location.create({
-        code,
-        name: body.name,
-        type: body.type,
-        site: site._id,
-        isSystem: false,
-        isActive: body.isActive !== false,
-      });
-    }
-
-    return Location.create({
-      code: await codeJob,
-      name: body.name,
-      type: body.type,
-      site: undefined,
-      isSystem: false,
-      isActive: body.isActive !== false,
-    });
-  },
-
-  async list(query) {
-    const filter = {};
-    if (query.type) filter.type = query.type;
-    if (query.siteId) filter.site = query.siteId;
-    if (query.search) {
-      const pattern = containsRegex(query.search);
-      filter.$or = [{ name: pattern }, { code: pattern }];
-    }
-
-    return locationRepo.paginate({
-      filter,
-      page: query.page,
-      limit: query.limit,
-      sort: parseSort(query.sort, LOCATION_SORT),
-      populate: [{ path: 'site', select: 'name code status' }],
-    });
-  },
-
-  getById(id) {
-    return getLocation(id);
-  },
-
-  async update(id, body) {
-    const doc = await Location.findById(id);
-    if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
-    assignDefined(doc, body, ['name', 'isActive']);
-    await doc.save();
-    if (!doc.site) return doc;
-    await doc.populate('site', 'name code status');
-    return doc;
-  },
-
-  async remove(id) {
-    const doc = await Location.findById(id);
-    if (!doc) throw new AppError('Stock location not found', 404, 'NOT_FOUND');
-    if (doc.isSystem) throw new AppError('The main store cannot be deleted', 409, 'CONFLICT');
-    if (doc.type === 'site_store') {
-      throw new AppError('Delete the site to delete its store', 409, 'CONFLICT');
-    }
-    const remaining = await Balance.exists({ location: doc._id, quantity: { $gt: 0 } });
-    if (remaining) {
-      throw new AppError('Move remaining stock before deleting this location', 409, 'CONFLICT');
-    }
-    await doc.deleteOne();
-  },
-};
-
 async function increaseStock(step, session) {
-  const locationId = step.locationId || (await mainStore()).id;
-  const filter = { item: step.itemId, location: locationId };
+  const location = normalizeLocation(step.location) || DEFAULT_LOCATION;
+  const filter = { item: step.itemId, location };
   const update = {
     $inc: { quantity: step.quantity },
-    $setOnInsert: { item: step.itemId, location: locationId },
+    $setOnInsert: { item: step.itemId, location },
   };
 
   try {
@@ -401,7 +433,7 @@ async function increaseStock(step, session) {
     await Balance.updateOne(filter, { $inc: { quantity: step.quantity } }, sessionOptions(session));
   }
 
-  return { ...step, locationId };
+  return { ...step, location };
 }
 
 async function decreaseFromItem(step, session) {
@@ -416,7 +448,7 @@ async function decreaseFromItem(step, session) {
       sessionOptions(session, { new: true })
     );
     if (full) {
-      taken.push({ ...step, locationId: full.location, quantity: remaining });
+      taken.push({ ...step, location: full.location, quantity: remaining });
       remaining = 0;
       break;
     }
@@ -432,7 +464,7 @@ async function decreaseFromItem(step, session) {
       sessionOptions(session, { new: true })
     );
     if (!got) continue;
-    taken.push({ ...step, locationId: got.location, quantity: take });
+    taken.push({ ...step, location: got.location, quantity: take });
     remaining = roundQuantity(remaining - take);
   }
 
@@ -452,12 +484,13 @@ async function decreaseFromItem(step, session) {
 }
 
 async function decreaseStock(step, session) {
-  if (!step.locationId) {
+  const location = normalizeLocation(step.location);
+  if (!location) {
     return decreaseFromItem(step, session);
   }
 
   const updated = await Balance.findOneAndUpdate(
-    { item: step.itemId, location: step.locationId, quantity: { $gte: step.quantity } },
+    { item: step.itemId, location, quantity: { $gte: step.quantity } },
     { $inc: { quantity: -step.quantity } },
     sessionOptions(session, { new: true })
   );
@@ -466,7 +499,7 @@ async function decreaseStock(step, session) {
     throw new AppError('Insufficient stock', 409, 'STOCK_INSUFFICIENT');
   }
 
-  return [step];
+  return [{ ...step, location }];
 }
 
 async function compensate(applied) {
@@ -529,7 +562,7 @@ async function withOptionalTransaction(work) {
     await session.commitTransaction();
     return result;
   } catch (error) {
-    await session.abortTransaction().catch(() => {});
+    await session.abortTransaction().catch(() => { });
     if (!transactionsUnsupported(error)) throw error;
     transactionsEnabled = false;
     return work(null);
@@ -538,46 +571,24 @@ async function withOptionalTransaction(work) {
   }
 }
 
-async function activeLocation(id, label) {
-  const location = await requireDoc(Location, id, label);
-  if (!location.isActive) throw new AppError(`${label} is inactive`, 400, 'BAD_REQUEST');
-  return location;
-}
-
-async function mainStore() {
-  const store = await Location.findOne({ code: 'LOC-MAIN' });
-  if (!store || !store.isActive) {
-    throw new AppError('Main store is not available', 404, 'NOT_FOUND');
-  }
-  return store;
-}
-
-async function withDefaultLocations(body) {
+function withDefaultLocations(body) {
   const next = { ...body };
-  const inbound = (
-    ((next.type === 'receipt' || next.type === 'return') && !next.toLocationId)
-    || (next.type === 'adjustment' && next.direction === 'increase' && !next.toLocationId && !next.fromLocationId)
-  );
-  const transfer = next.type === 'transfer' && (!next.fromLocationId || !next.toLocationId);
-  if (!inbound && !transfer) return next;
+  next.fromLocation = normalizeLocation(next.fromLocation);
+  next.toLocation = normalizeLocation(next.toLocation);
 
-  const store = await mainStore();
-  const mainId = store.id;
-  if ((next.type === 'receipt' || next.type === 'return') && !next.toLocationId) next.toLocationId = mainId;
-  if (next.type === 'adjustment' && next.direction === 'increase' && !next.toLocationId && !next.fromLocationId) {
-    next.toLocationId = mainId;
+  if ((next.type === 'receipt' || next.type === 'return') && !next.toLocation) {
+    next.toLocation = DEFAULT_LOCATION;
   }
-  if (next.type === 'transfer') {
-    if (!next.fromLocationId) next.fromLocationId = mainId;
-    if (!next.toLocationId) next.toLocationId = mainId;
+  if (next.type === 'adjustment' && next.direction === 'increase' && !next.toLocation && !next.fromLocation) {
+    next.toLocation = DEFAULT_LOCATION;
+  }
+  if (next.type === 'issue' && !next.fromLocation) {
+    next.fromLocation = DEFAULT_LOCATION;
+  }
+  if (next.type === 'adjustment' && next.direction === 'decrease' && !next.fromLocation && !next.toLocation) {
+    next.fromLocation = DEFAULT_LOCATION;
   }
   return next;
-}
-
-async function assertLocationMatchesSite(location, siteId) {
-  if (siteId && location.site && String(location.site) !== String(siteId)) {
-    throw new AppError('Stock location does not belong to the selected site', 400, 'BAD_REQUEST');
-  }
 }
 
 function isLowStock(quantity, reorderLevel) {
@@ -651,23 +662,23 @@ function packStock(rows, query) {
 
 const stock = {
   async list(query) {
-    if (query.locationId) {
-      const filter = { location: query.locationId };
+    const location = normalizeLocation(query.location);
+    if (location) {
+      const filter = { location };
       if (query.itemId) {
         const item = await getItem(query.itemId);
         filter.item = { $in: await relatedItemIds(item) };
       }
       const docs = await Balance.find(filter)
         .sort({ quantity: -1 })
-        .populate('item', 'name sku unit code category reorderLevel')
-        .populate('location', 'name code type site');
+        .populate('item', 'name sku unit code category reorderLevel');
       const itemIds = docs.map((doc) => doc.item && doc.item._id).filter(Boolean);
       const totals = itemIds.length
         ? await movementTotals({
           item: { $in: itemIds },
           $or: [
-            { type: { $in: ['receipt', 'return'] }, toLocation: query.locationId },
-            { type: 'issue', fromLocation: query.locationId },
+            { type: { $in: ['receipt', 'return'] }, toLocation: location },
+            { type: 'issue', fromLocation: location },
           ],
         })
         : new Map();
@@ -679,7 +690,7 @@ const stock = {
           id: json.id,
           received: flow.received,
           issued: flow.issued,
-          location: json.location || null,
+          location: json.location || location,
         });
       }).filter(Boolean);
       return packStock(rows, query);
@@ -751,9 +762,7 @@ const stock = {
 };
 
 function idOf(value) {
-  if (value == null || value === '') return undefined;
-  if (typeof value === 'object') return String(value.id || value._id);
-  return String(value);
+  return asId(value) || undefined;
 }
 
 function pickId(next, current) {
@@ -762,15 +771,21 @@ function pickId(next, current) {
   return String(next);
 }
 
+function pickLocation(next, current) {
+  if (next === undefined) return normalizeLocation(current);
+  if (next === null) return '';
+  return normalizeLocation(next);
+}
+
 function mergeMovementInput(doc, body) {
   return {
     type: doc.type,
     itemId: pickId(body.itemId, doc.item),
     quantity: body.quantity !== undefined ? body.quantity : doc.quantity,
     direction: body.direction !== undefined ? body.direction : doc.direction,
-    fromLocationId: pickId(body.fromLocationId, doc.fromLocation),
-    toLocationId: pickId(body.toLocationId, doc.toLocation),
-    projectId: pickId(body.projectId, doc.project),
+    fromLocation: pickLocation(body.fromLocation, doc.fromLocation),
+    toLocation: pickLocation(body.toLocation, doc.toLocation),
+    locationType: body.locationType !== undefined ? body.locationType : doc.locationType,
     siteId: pickId(body.siteId, doc.site),
     employeeId: pickId(body.employeeId, doc.employee),
     vehicleTypeId: pickId(body.vehicleTypeId, doc.vehicleType),
@@ -787,6 +802,7 @@ function mergeMovementInput(doc, body) {
     movementDate: body.movementDate !== undefined ? body.movementDate : doc.movementDate,
     reference: body.reference !== undefined ? body.reference : doc.reference,
     remarks: body.remarks !== undefined ? body.remarks : doc.remarks,
+    note: body.note !== undefined ? body.note : doc.note,
   };
 }
 
@@ -813,35 +829,27 @@ function sameStockPool(left, right) {
 async function resolveMovementWrite(body) {
   if (
     body.type === 'adjustment'
-    && body.fromLocationId
-    && body.toLocationId
-    && String(body.fromLocationId) !== String(body.toLocationId)
+    && normalizeLocation(body.fromLocation)
+    && normalizeLocation(body.toLocation)
+    && normalizeLocation(body.fromLocation).toLowerCase() !== normalizeLocation(body.toLocation).toLowerCase()
   ) {
     throw new AppError('An adjustment can update only one location', 400, 'BAD_REQUEST');
   }
 
-  const movement = await withDefaultLocations(body);
-  const plan = planStockMovement(movement);
-  const locationIds = [...new Set([
-    ...plan.increase.map((step) => step.locationId),
-    ...plan.decrease.map((step) => step.locationId),
-  ])].filter(Boolean);
+  const movement = withDefaultLocations(body);
+  if (movement.type === 'transfer' && (!movement.fromLocation || !movement.toLocation)) {
+    throw new AppError('Transfer needs both a source and a destination location', 400, 'BAD_REQUEST');
+  }
 
-  const [item, locations, site, project, employee] = await Promise.all([
+  const plan = planStockMovement(movement);
+
+  const [item, site, employee] = await Promise.all([
     getItem(body.itemId),
-    Promise.all(locationIds.map((locationId) => activeLocation(locationId, 'Stock location'))),
     movement.siteId ? requireDoc(Site, movement.siteId, 'Site') : null,
-    movement.projectId ? requireDoc(Project, movement.projectId, 'Project') : null,
     body.employeeId ? requireDoc(Employee, body.employeeId, 'Employee') : null,
   ]);
 
   if (!item.isActive) throw new AppError('Item is inactive', 400, 'BAD_REQUEST');
-  for (const location of locations) {
-    assertLocationMatchesSite(location, movement.siteId);
-  }
-  if (site && project && String(site.project) !== String(project._id)) {
-    throw new AppError('Site does not belong to the selected project', 400, 'BAD_REQUEST');
-  }
 
   const stockIds = await relatedItemIds(item);
   if (plan.decrease.length) {
@@ -853,9 +861,7 @@ async function resolveMovementWrite(body) {
     plan,
     item,
     site,
-    project,
     employee,
-    locationById: new Map(locations.map((location) => [String(location._id), location])),
   };
 }
 
@@ -865,9 +871,9 @@ function movementRecord(body, movement, plan, refs) {
     item: refs.item._id,
     quantity: plan.quantity,
     direction: body.type === 'adjustment' ? body.direction : undefined,
-    fromLocation: movement.fromLocationId,
-    toLocation: movement.toLocationId,
-    project: body.projectId || undefined,
+    fromLocation: movement.fromLocation || '',
+    toLocation: movement.toLocation || '',
+    locationType: body.locationType || movement.locationType || undefined,
     site: body.siteId || undefined,
     employee: refs.employee ? refs.employee._id : undefined,
     vehicleType: body.vehicleTypeId || undefined,
@@ -885,12 +891,13 @@ function movementRecord(body, movement, plan, refs) {
     movementDate: body.movementDate || new Date(),
     reference: body.reference || '',
     remarks: body.remarks || '',
+    note: body.note || '',
   };
 
   if (movement.type === 'adjustment') {
-    const locationId = movement.toLocationId || movement.fromLocationId;
-    payload.fromLocation = body.direction === 'decrease' ? locationId : undefined;
-    payload.toLocation = body.direction === 'increase' ? locationId : undefined;
+    const location = movement.toLocation || movement.fromLocation || DEFAULT_LOCATION;
+    payload.fromLocation = body.direction === 'decrease' ? location : '';
+    payload.toLocation = body.direction === 'increase' ? location : '';
   }
 
   return payload;
@@ -943,15 +950,11 @@ async function assertReplaceFits(oldItem, oldPlan, newItem, newPlan) {
   }
 }
 
-function presentSavedMovement(saved, ctx) {
-  return presentMovement(saved, {
-    item: ctx.item,
-    fromLocation: saved.fromLocation ? ctx.locationById.get(String(saved.fromLocation)) : null,
-    toLocation: saved.toLocation ? ctx.locationById.get(String(saved.toLocation)) : null,
-    project: ctx.project,
-    site: ctx.site,
-    employee: ctx.employee,
-  });
+async function presentSavedMovement(saved) {
+  if (saved && typeof saved.populate === 'function') {
+    await saved.populate(MOVEMENT_POPULATE);
+  }
+  return presentMovementListItem(saved);
 }
 
 const movements = {
@@ -992,7 +995,7 @@ const movements = {
       }
     });
 
-    return presentSavedMovement(saved, ctx);
+    return await presentSavedMovement(saved);
   },
 
   async update(id, body, _user, options = {}) {
@@ -1015,8 +1018,8 @@ const movements = {
       type: doc.type,
       quantity: doc.quantity,
       direction: doc.direction,
-      fromLocationId: doc.fromLocation,
-      toLocationId: doc.toLocation,
+      fromLocation: doc.fromLocation,
+      toLocation: doc.toLocation,
     });
     const oldItem = await getItem(doc.item);
     const oldStockIds = await relatedItemIds(oldItem);
@@ -1062,28 +1065,89 @@ const movements = {
       }
     });
 
-    return presentSavedMovement(saved, ctx);
+    return await presentSavedMovement(saved);
   },
 
   async updateIssue(id, body, user) {
-    return movements.update(id, body, user, { expectType: 'issue' });
+    await movements.update(id, body, user, { expectType: 'issue' });
+    return movements.getIssue(id);
+  },
+
+  async createIssue(body, user) {
+    const saved = await movements.create({ ...body, type: 'issue' }, user);
+    return movements.getIssue(saved.id);
+  },
+
+  async remove(id, options = {}) {
+    const doc = await Movement.findById(id);
+    if (!doc) {
+      throw new AppError(
+        options.expectType === 'issue' ? 'Stock issue not found' : 'Stock movement not found',
+        404,
+        'NOT_FOUND'
+      );
+    }
+    if (options.expectType && doc.type !== options.expectType) {
+      throw new AppError(
+        options.expectType === 'issue'
+          ? 'Stock issue not found'
+          : `This record is a ${doc.type}, not a stock movement`,
+        404,
+        'NOT_FOUND'
+      );
+    }
+    if (!options.expectType && doc.type === 'issue') {
+      throw new AppError('Use the issue delete API for stock issues', 400, 'BAD_REQUEST');
+    }
+
+    const item = await getItem(doc.item);
+    const stockIds = await relatedItemIds(item);
+    const plan = planStockMovement({
+      type: doc.type,
+      quantity: doc.quantity,
+      direction: doc.direction,
+      fromLocation: doc.fromLocation,
+      toLocation: doc.toLocation,
+    });
+    const undone = reversePlan(plan);
+    for (const step of plan.decrease) step.itemIds = stockIds;
+    for (const step of undone.decrease) step.itemIds = stockIds;
+
+    const photo = doc.materialReceiptPhoto;
+    await withOptionalTransaction(async (session) => {
+      await applyPlan(undone, item._id, session);
+      try {
+        await doc.deleteOne(sessionOptions(session));
+      } catch (error) {
+        if (!session) await applyPlan(plan, item._id, null);
+        throw error;
+      }
+    });
+
+    removeStoredReceipt(photo);
+  },
+
+  async removeIssue(id) {
+    return movements.remove(id, { expectType: 'issue' });
   },
 
   async list(query, options = {}) {
+    const asIssue = options.asIssue === true;
     const filter = {};
     if (options.types) filter.type = { $in: options.types };
     else if (query.type) filter.type = query.type;
     if (query.itemId) filter.item = query.itemId;
-    if (query.projectId) filter.project = query.projectId;
+    if (query.locationType) filter.locationType = query.locationType;
     if (query.siteId) filter.site = query.siteId;
     if (query.employeeId) filter.employee = query.employeeId;
     if (query.vehicleTypeId) filter.vehicleType = query.vehicleTypeId;
-    if (query.locationId) {
-      filter.$or = [{ fromLocation: query.locationId }, { toLocation: query.locationId }];
+    if (query.location) {
+      const location = normalizeLocation(query.location);
+      filter.$or = [{ fromLocation: location }, { toLocation: location }];
     }
     if (query.search) {
       const pattern = containsRegex(query.search);
-      filter.$and = [{ $or: [{ code: pattern }, { reference: pattern }, { remarks: pattern }, { vendorName: pattern }, { billNo: pattern }, { challanNo: pattern }, { address: pattern }] }];
+      filter.$and = [{ $or: [{ code: pattern }, { reference: pattern }, { remarks: pattern }, { note: pattern }, { vendorName: pattern }, { billNo: pattern }, { challanNo: pattern }, { address: pattern }] }];
     }
     if (query.from || query.to) {
       const from = query.from ? startOfUtcDay(new Date(query.from)) : new Date(0);
@@ -1097,9 +1161,12 @@ const movements = {
       page: query.page,
       limit: query.limit,
       sort: parseSort(query.sort, MOVEMENT_SORT, { movementDate: -1 }),
-      populate: MOVEMENT_POPULATE,
+      select: asIssue ? ISSUE_LIST_SELECT : MOVEMENT_LIST_SELECT,
+      populate: asIssue ? ISSUE_POPULATE : MOVEMENT_POPULATE,
+      lean: true,
     });
-    result.items = result.items.map((doc) => withVehicleTypeId(doc));
+    const present = asIssue ? presentIssueListItem : presentMovementListItem;
+    result.items = result.items.map((doc) => present(doc));
     return result;
   },
 
@@ -1108,16 +1175,20 @@ const movements = {
   },
 
   async listIssues(query) {
-    return movements.list(query, { types: ['issue'] });
+    return movements.list(query, { types: ['issue'], asIssue: true });
   },
 
   async getById(id, options = {}) {
-    const doc = await Movement.findById(id).populate(MOVEMENT_POPULATE).lean({ virtuals: true });
+    const asIssue = options.expectType === 'issue';
+    const doc = await Movement.findById(id)
+      .select(asIssue ? ISSUE_LIST_SELECT : MOVEMENT_LIST_SELECT)
+      .populate(asIssue ? ISSUE_POPULATE : MOVEMENT_POPULATE)
+      .lean({ virtuals: true });
     if (!doc) throw new AppError('Stock movement not found', 404, 'NOT_FOUND');
     if (options.expectType && doc.type !== options.expectType) {
       throw new AppError('Stock issue not found', 404, 'NOT_FOUND');
     }
-    return withVehicleTypeId(doc);
+    return asIssue ? presentIssueListItem(doc) : presentMovementListItem(doc);
   },
 
   async getIssue(id) {
@@ -1125,4 +1196,4 @@ const movements = {
   },
 };
 
-module.exports = { items, locations, stock, movements };
+module.exports = { items, stock, movements };
