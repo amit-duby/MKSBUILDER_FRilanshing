@@ -1955,18 +1955,8 @@ const spec = {
           remarks: 'Corrected inward quantity',
         }),
       }),
-    },
-    '/inventory/movements/{id}': {
-      get: operation('Inventory', 'Get a stock movement', { parameters: [pathParam()], data: 'StockMovement' }),
-      patch: operation('Inventory', 'Update a stock movement and recalculate remaining stock', {
+      delete: operation('Inventory', 'Delete a stock movement and reverse its stock effect', {
         parameters: [pathParam()],
-        data: 'StockMovement',
-        body: jsonBody(ref('MovementUpdate'), {
-          quantity: 80,
-          vendorName: 'Ultratech Cement',
-          billNo: 'INV-1024',
-          remarks: 'Corrected inward quantity',
-        }),
       }),
     },
     '/inventory/issues': {
@@ -2014,6 +2004,9 @@ const spec = {
           siteId: '64b0c0c0c0c0c0c0c0c0c0c0',
           remarks: 'Corrected issue quantity',
         }),
+      }),
+      delete: operation('Inventory', 'Delete a stock issue and reverse its stock effect', {
+        parameters: [pathParam()],
       }),
     },
     '/vehicles': {
