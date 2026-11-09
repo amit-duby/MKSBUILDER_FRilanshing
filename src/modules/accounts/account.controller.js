@@ -73,6 +73,14 @@ const listAdvances = asyncHandler(async (req, res) => {
   }, 'Advance requests fetched', result.meta);
 });
 
+const listAdvancePayable = asyncHandler(async (req, res) => {
+  const result = await advanceService.listPayable(req.query);
+  return ok(res, {
+    summary: result.summary,
+    items: result.items,
+  }, 'Advance payable list fetched', result.meta);
+});
+
 const createAdvance = asyncHandler(async (req, res) => {
   const data = await advanceService.create(req.body, req.user);
   return created(res, data, 'Advance request saved');
@@ -112,6 +120,7 @@ module.exports = {
   summary,
   statement,
   listAdvances,
+  listAdvancePayable,
   createAdvance,
   getAdvance,
   updateAdvance,

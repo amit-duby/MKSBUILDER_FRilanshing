@@ -1395,6 +1395,34 @@ const schemas = {
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
+  AdvancePayableList: schemaObject({
+    summary: schemaObject({
+      gross: { ...money, example: 0 },
+      advanceRecovery: { ...money, example: 0 },
+      netPayable: { ...money, example: 0 },
+    }),
+    items: {
+      type: 'array',
+      items: schemaObject({
+        employeeId: objectId,
+        advanceIds: { type: 'array', items: objectId },
+        fullName: { type: 'string', example: 'Rahul Verma' },
+        initials: { type: 'string', example: 'RV' },
+        employeeCode: { type: 'string', example: 'EMP-0001' },
+        siteId: { ...objectId, nullable: true },
+        siteName: { type: 'string', example: 'Site_B' },
+        note: { type: 'string', nullable: true, example: 'Imprest amount' },
+        daysPresent: { type: 'number', example: 0 },
+        workingDays: { type: 'integer', example: 25 },
+        basic: money,
+        extraShifts: money,
+        advance: { ...money, nullable: true },
+        advanceRecovery: money,
+        netPay: money,
+        canPay: { type: 'boolean', example: true },
+      }),
+    },
+  }),
   EmployeeAssignment: modelSchema({
     id: objectId,
     employee: objectId,
@@ -2315,6 +2343,21 @@ const spec = {
           employeeRemarks: 'Will adjust in next salary',
           requestDate: '2026-10-30',
         }),
+      }),
+    },
+    '/accounts/advances/payable': {
+      get: operation('Accounts', 'Advance payable list for payroll screen', {
+        parameters: [
+          ...paging,
+          query('employeeId', objectId),
+          query('departmentId', objectId),
+          query('siteId', objectId),
+          query('periodMonth', { type: 'integer', minimum: 1, maximum: 12 }),
+          query('periodYear', { type: 'integer', minimum: 2000, maximum: 2100 }),
+          query('from', dateString),
+          query('to', dateString),
+        ],
+        data: 'AdvancePayableList',
       }),
     },
     '/accounts/advances/{id}': {
