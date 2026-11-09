@@ -1,5 +1,4 @@
 const {
-  UNITS,
   STOCK_LOCATION_TYPES,
   MOVEMENT_TYPES,
   MATERIAL_CONDITIONS,
@@ -32,7 +31,7 @@ const itemBody = z.object({
   sku: z.string().trim().min(1).max(40).optional(),
   name: shortText(120),
   category: shortText(40),
-  unit: z.enum(UNITS),
+  unit: shortText(40),
   reorderLevel: reorderLevel.optional(),
   description: optionalText(500),
   isActive: z.boolean().optional(),

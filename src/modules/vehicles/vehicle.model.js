@@ -41,6 +41,9 @@ const vehicleSchema = new mongoose.Schema(
   { timestamps: true, collection: COLLECTIONS.vehicles }
 );
 
+vehicleSchema.index({ status: 1, createdAt: -1 });
+vehicleSchema.index({ vehicleType: 1, createdAt: -1 });
+
 applyJson(vehicleSchema);
 
 module.exports = mongoose.model('Vehicle', vehicleSchema);

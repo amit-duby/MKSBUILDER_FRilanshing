@@ -97,15 +97,46 @@ function presentVehicleBrief(doc) {
 }
 
 async function assertVehicleType(vehicleTypeId) {
-  const vehicleType = await requireDoc(VehicleType, vehicleTypeId, 'Vehicle type');
+  const vehicleType = await VehicleType.findById(vehicleTypeId)
+    .select('name description status')
+    .lean();
+  if (!vehicleType) throw new AppError('Vehicle type not found', 404, 'NOT_FOUND');
   if (vehicleType.status !== 'active') {
     throw new AppError('Choose an active vehicle type', 400, 'BAD_REQUEST');
   }
   return vehicleType;
 }
 
+function hasLegacyTypeField(doc) {
+  if (!doc) return false;
+  if (typeof doc.get === 'function' && doc.get('type', undefined, { getters: false }) !== undefined) {
+    return true;
+  }
+  const raw = typeof doc.toObject === 'function'
+    ? doc.toObject({ depopulate: true, versionKey: false, virtuals: false })
+    : doc;
+  return Object.prototype.hasOwnProperty.call(raw || {}, 'type');
+}
+
 async function unsetLegacyType(id) {
   await Vehicle.updateOne({ _id: id }, { $unset: { type: 1 } });
+}
+
+async function loadCurrentAssignmentLean(vehicle) {
+  const assignmentId = vehicle.currentAssignment && (vehicle.currentAssignment._id || vehicle.currentAssignment);
+  if (assignmentId) {
+    const assignment = await Assignment.findById(assignmentId)
+      .select('site driver assignedAt releasedAt remarks createdAt updatedAt')
+      .populate(ASSIGNMENT_POPULATE)
+      .lean({ virtuals: true });
+    if (assignment) return assignment;
+  }
+
+  return Assignment.findOne({ vehicle: vehicle._id, releasedAt: null })
+    .select('site driver assignedAt releasedAt remarks createdAt updatedAt')
+    .sort({ assignedAt: -1 })
+    .populate(ASSIGNMENT_POPULATE)
+    .lean({ virtuals: true });
 }
 
 function presentCategoryBrief(doc) {
@@ -386,7 +417,6 @@ const service = {
       documents: body.documents || {},
       notes: body.notes || '',
     });
-    await unsetLegacyType(vehicle._id);
     const json = vehicle.toJSON();
     json.vehicleType = presentVehicleType(vehicleType);
     json.currentAssignment = null;
@@ -394,13 +424,14 @@ const service = {
   },
 
   async list(query) {
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+    const sort = parseSort(query.sort, SORT_FIELDS);
+
     const filter = {};
     if (query.status) filter.status = query.status;
-    if (query.vehicleTypeId) filter.vehicleType = query.vehicleTypeId;
-    if (query.siteId) {
-      const ids = await Assignment.find({ site: query.siteId, releasedAt: null }).distinct('vehicle');
-      filter._id = { $in: ids };
-    }
+    if (query.vehicleTypeId) filter.vehicleType = asObjectId(query.vehicleTypeId);
     if (query.search) {
       const pattern = containsRegex(query.search);
       filter.$or = [
@@ -411,57 +442,189 @@ const service = {
       ];
     }
 
-    const result = await repo.paginate({
-      filter,
-      page: query.page,
-      limit: query.limit,
-      sort: parseSort(query.sort, SORT_FIELDS),
-      populate: [
-        VEHICLE_TYPE_POPULATE,
-        { path: 'currentAssignment', populate: ASSIGNMENT_POPULATE },
-      ],
-      lean: true,
-    });
+    const siteId = query.siteId ? asObjectId(query.siteId) : null;
+    const pipeline = [{ $match: filter }];
 
-    const missingIds = result.items
-      .filter((item) => {
-        const assignment = item.currentAssignment;
-        return !assignment || typeof assignment !== 'object' || !assignment.site;
-      })
-      .map((item) => item._id || item.id);
-
-    const fallbackByVehicle = new Map();
-    if (missingIds.length) {
-      const rows = await Assignment.find({
-        vehicle: { $in: missingIds },
-        releasedAt: null,
-      })
-        .populate(ASSIGNMENT_POPULATE)
-        .sort({ assignedAt: -1 })
-        .lean({ virtuals: true });
-
-      for (const row of rows) {
-        const key = String(row.vehicle);
-        if (!fallbackByVehicle.has(key)) fallbackByVehicle.set(key, row);
-      }
+    if (siteId) {
+      pipeline.push(
+        {
+          $lookup: {
+            from: COLLECTIONS.vehicleAssignments,
+            let: { vehicleId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$vehicle', '$$vehicleId'] },
+                      { $eq: ['$releasedAt', null] },
+                      { $eq: ['$site', siteId] },
+                    ],
+                  },
+                },
+              },
+              { $limit: 1 },
+              { $project: { _id: 1 } },
+            ],
+            as: 'siteAssignmentMatch',
+          },
+        },
+        { $match: { 'siteAssignmentMatch.0': { $exists: true } } }
+      );
     }
 
-    result.items = result.items.map((item) => {
-      const id = String(item.id || item._id);
-      let assignment = item.currentAssignment;
-      if (!assignment || typeof assignment !== 'object' || !assignment.site) {
-        assignment = fallbackByVehicle.get(id) || null;
-      }
-      return {
-        ...item,
-        id,
-        status: presentStatus(item.status, Boolean(assignment)),
-        vehicleType: presentVehicleType(item.vehicleType),
-        currentAssignment: presentAssignmentDetail(assignment),
-      };
+    pipeline.push({
+      $facet: {
+        items: [
+          { $sort: sort },
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $lookup: {
+              from: COLLECTIONS.vehicleTypes,
+              localField: 'vehicleType',
+              foreignField: '_id',
+              pipeline: [{ $project: { name: 1, description: 1, status: 1 } }],
+              as: 'vehicleTypeDocs',
+            },
+          },
+          {
+            $lookup: {
+              from: COLLECTIONS.vehicleAssignments,
+              localField: 'currentAssignment',
+              foreignField: '_id',
+              pipeline: [
+                { $project: { site: 1, driver: 1, assignedAt: 1, releasedAt: 1, remarks: 1, createdAt: 1, updatedAt: 1 } },
+              ],
+              as: 'assignmentByIdDocs',
+            },
+          },
+          {
+            $lookup: {
+              from: COLLECTIONS.vehicleAssignments,
+              let: { vehicleId: '$_id' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$vehicle', '$$vehicleId'] },
+                        { $eq: ['$releasedAt', null] },
+                      ],
+                    },
+                  },
+                },
+                { $sort: { assignedAt: -1 } },
+                { $limit: 1 },
+                { $project: { site: 1, driver: 1, assignedAt: 1, releasedAt: 1, remarks: 1, createdAt: 1, updatedAt: 1 } },
+              ],
+              as: 'openAssignmentDocs',
+            },
+          },
+          {
+            $addFields: {
+              vehicleType: { $arrayElemAt: ['$vehicleTypeDocs', 0] },
+              currentAssignment: {
+                $let: {
+                  vars: {
+                    byId: { $arrayElemAt: ['$assignmentByIdDocs', 0] },
+                    open: { $arrayElemAt: ['$openAssignmentDocs', 0] },
+                  },
+                  in: {
+                    $cond: [
+                      {
+                        $and: [
+                          { $ne: ['$$byId', null] },
+                          { $ne: ['$$byId.site', null] },
+                        ],
+                      },
+                      '$$byId',
+                      '$$open',
+                    ],
+                  },
+                },
+              },
+            },
+          },
+          {
+            $lookup: {
+              from: COLLECTIONS.sites,
+              localField: 'currentAssignment.site',
+              foreignField: '_id',
+              pipeline: [{ $project: { name: 1, code: 1, status: 1 } }],
+              as: 'siteDocs',
+            },
+          },
+          {
+            $lookup: {
+              from: COLLECTIONS.employees,
+              localField: 'currentAssignment.driver',
+              foreignField: '_id',
+              pipeline: [{ $project: { fullName: 1, code: 1, designation: 1 } }],
+              as: 'driverDocs',
+            },
+          },
+          {
+            $addFields: {
+              currentAssignment: {
+                $cond: [
+                  { $eq: [{ $type: '$currentAssignment' }, 'object'] },
+                  {
+                    $mergeObjects: [
+                      '$currentAssignment',
+                      {
+                        site: { $arrayElemAt: ['$siteDocs', 0] },
+                        driver: { $arrayElemAt: ['$driverDocs', 0] },
+                      },
+                    ],
+                  },
+                  null,
+                ],
+              },
+            },
+          },
+          {
+            $project: {
+              vehicleTypeDocs: 0,
+              assignmentByIdDocs: 0,
+              openAssignmentDocs: 0,
+              siteDocs: 0,
+              driverDocs: 0,
+              siteAssignmentMatch: 0,
+              __v: 0,
+            },
+          },
+        ],
+        total: [{ $count: 'count' }],
+      },
     });
 
-    return result;
+    const [facet = {}] = await Vehicle.aggregate(pipeline);
+    const total = facet.total && facet.total[0] ? facet.total[0].count : 0;
+
+    return {
+      items: (facet.items || []).map((item) => {
+        const id = String(item._id);
+        const assignment = item.currentAssignment && item.currentAssignment.site
+          ? item.currentAssignment
+          : null;
+        const row = {
+          ...item,
+          id,
+          status: presentStatus(item.status, Boolean(assignment)),
+          vehicleType: presentVehicleType(item.vehicleType),
+          currentAssignment: presentAssignmentDetail(assignment),
+        };
+        delete row._id;
+        return row;
+      }),
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: total === 0 ? 1 : Math.ceil(total / limit),
+      },
+    };
   },
 
   getById(id) {
@@ -469,31 +632,44 @@ const service = {
   },
 
   async update(id, body) {
-    const doc = await getMutable(id);
-    let vehicleType;
+    const [doc, requestedType] = await Promise.all([
+      Vehicle.findById(id),
+      body.vehicleTypeId ? assertVehicleType(body.vehicleTypeId) : null,
+    ]);
+    if (!doc) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
+
+    let vehicleType = requestedType;
+    if (doc.status === 'maintenance') {
+      doc.status = doc.currentAssignment ? 'assigned' : 'available';
+    }
+
     if (body.status && body.status !== doc.status) {
-      if (doc.status === 'assigned') {
+      if (doc.status === 'assigned' || doc.currentAssignment) {
         throw new AppError('Release the vehicle before changing status', 409, 'CONFLICT');
       }
       doc.status = body.status;
     }
 
     if (body.registrationNumber) doc.registrationNumber = body.registrationNumber;
-    if (body.vehicleTypeId) {
-      vehicleType = await assertVehicleType(body.vehicleTypeId);
-      doc.vehicleType = vehicleType._id;
-    }
+    if (vehicleType) doc.vehicleType = vehicleType._id;
     assignDefined(doc, body, ['make', 'modelName', 'year', 'fuelType', 'notes']);
     if (body.odometer !== undefined) assertOdometer(doc, body.odometer);
     applyDocuments(doc, body.documents);
+
+    const shouldUnsetLegacyType = hasLegacyTypeField(doc);
     await doc.save();
-    const [, assignment] = await Promise.all([
-      unsetLegacyType(doc._id),
-      loadCurrentAssignment(doc),
-      vehicleType ? Promise.resolve(null) : doc.populate(VEHICLE_TYPE_POPULATE),
+
+    const [assignment, loadedType] = await Promise.all([
+      loadCurrentAssignmentLean(doc),
+      vehicleType
+        ? Promise.resolve(vehicleType)
+        : VehicleType.findById(doc.vehicleType).select('name description status').lean(),
+      shouldUnsetLegacyType ? unsetLegacyType(doc._id) : Promise.resolve(null),
     ]);
+
     const json = doc.toJSON();
-    json.vehicleType = presentVehicleType(vehicleType || doc.vehicleType);
+    json.status = presentStatus(json.status, Boolean(assignment));
+    json.vehicleType = presentVehicleType(loadedType);
     json.currentAssignment = presentAssignmentDetail(assignment);
     return json;
   },
