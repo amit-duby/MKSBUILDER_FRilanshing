@@ -869,7 +869,7 @@ const schemas = {
       requestDate: dateString,
       advanceAmount: { ...positiveMoney, example: 5000 },
       reasonForAdvance: { type: 'string', maxLength: 500, example: 'Festival advance' },
-      attachment: { type: 'string', maxLength: 500, nullable: true },
+      attachment: { type: 'string', nullable: true },
       employeeRemarks: { type: 'string', maxLength: 500 },
     },
     ['employeeId', 'advanceAmount', 'reasonForAdvance']
@@ -880,7 +880,7 @@ const schemas = {
     requestDate: dateString,
     advanceAmount: positiveMoney,
     reasonForAdvance: { type: 'string', maxLength: 500 },
-    attachment: { type: 'string', maxLength: 500, nullable: true },
+    attachment: { type: 'string', nullable: true },
     employeeRemarks: { type: 'string', maxLength: 500 },
   }),
   AdvanceRecover: schemaObject(

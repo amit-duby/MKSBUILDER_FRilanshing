@@ -94,7 +94,7 @@ const advanceBody = z.object({
     message: 'Advance amount must be greater than zero',
   }),
   reasonForAdvance: shortText(500),
-  attachment: z.string().trim().min(1).max(500).nullable().optional(),
+  attachment: z.string().trim().min(1).nullable().optional(),
   employeeRemarks: optionalText(500),
 });
 

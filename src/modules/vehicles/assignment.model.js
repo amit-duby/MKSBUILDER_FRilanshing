@@ -21,8 +21,8 @@ const assignmentSchema = new mongoose.Schema(
 
 assignmentSchema.index({ vehicle: 1, assignedAt: -1 });
 assignmentSchema.index({ site: 1, releasedAt: 1 });
+assignmentSchema.index({ driver: 1, site: 1, releasedAt: 1 });
 
 applyJson(assignmentSchema);
 
 module.exports = mongoose.model('VehicleAssignment', assignmentSchema);
-2

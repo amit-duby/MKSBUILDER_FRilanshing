@@ -27,6 +27,10 @@ const maintenanceSchema = new mongoose.Schema(
   { timestamps: true, collection: COLLECTIONS.vehicleMaintenance }
 );
 
+maintenanceSchema.index({ date: -1, maintenanceCategory: 1 });
+maintenanceSchema.index({ vehicle: 1, date: -1 });
+maintenanceSchema.index({ maintenanceCategory: 1, date: -1 });
+
 applyJson(maintenanceSchema);
 
 module.exports = mongoose.model('VehicleMaintenance', maintenanceSchema);

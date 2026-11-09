@@ -47,11 +47,24 @@ function publicRef(doc) {
 }
 
 function asId(value) {
-  if (!value) return null;
+  if (value == null || value === '') return null;
   if (typeof value === 'string') return value;
-  if (value.id) return String(value.id);
-  if (value._id) return String(value._id);
+  if (typeof value === 'object') {
+    if (typeof value.toHexString === 'function') return value.toHexString();
+    if (value._id && value._id !== value) return asId(value._id);
+    if (typeof value.toString === 'function') {
+      const text = value.toString();
+      if (text && text !== '[object Object]') return text;
+    }
+    return null;
+  }
   return String(value);
+}
+
+function asObjectId(value) {
+  if (!value) return null;
+  if (value instanceof mongoose.Types.ObjectId) return value;
+  return new mongoose.Types.ObjectId(String(value));
 }
 
 function presentVehicleType(doc) {
@@ -131,24 +144,29 @@ function presentMaintenance(doc) {
   };
 }
 
-async function presentMaintenanceList(items) {
-  const rows = items.map(presentMaintenance);
-  const missing = [...new Set(
-    rows
-      .filter((row) => row.maintenanceCategory && row.maintenanceCategory.id && !row.maintenanceCategory.name)
-      .map((row) => row.maintenanceCategory.id)
-  )];
-  if (!missing.length) return rows;
+function presentMaintenanceList(items) {
+  return items.map((doc) => {
+    if (doc && doc._id && doc.id == null) doc.id = String(doc._id);
+    return presentMaintenance(doc);
+  });
+}
 
-  const cats = await MaintenanceCategory.find({ _id: { $in: missing } }).select('name description status');
-  const byId = new Map(cats.map((cat) => [cat.id, presentCategoryBrief(cat)]));
-  for (const row of rows) {
-    if (row.maintenanceCategory && !row.maintenanceCategory.name) {
-      const filled = byId.get(row.maintenanceCategory.id);
-      if (filled) row.maintenanceCategory = filled;
-    }
+function buildMaintenanceListFilter(query) {
+  const filter = {};
+  if (query.vehicleId) filter.vehicle = asObjectId(query.vehicleId);
+  if (query.maintenanceCategoryId) {
+    filter.maintenanceCategory = asObjectId(query.maintenanceCategoryId);
   }
-  return rows;
+  if (query.from || query.to) {
+    filter.date = {};
+    if (query.from) filter.date.$gte = startOfUtcDay(query.from);
+    if (query.to) filter.date.$lte = endOfUtcDay(query.to);
+  }
+  if (query.search) {
+    const pattern = containsRegex(query.search);
+    filter.$or = [{ paidTo: pattern }, { reference: pattern }, { description: pattern }];
+  }
+  return filter;
 }
 
 async function getMutable(id) {
@@ -248,7 +266,15 @@ function applyDocuments(vehicle, documents) {
 
 async function recordExpense(payload, user) {
   const expenseService = require('../accounts/expense.service');
-  return expenseService.create(payload, user);
+  return expenseService.create(payload, user, { present: false, trustRefs: true });
+}
+
+function presentMaintenanceFromParts(log, vehicle, category) {
+  const raw = typeof log.toObject === 'function' ? log.toObject() : { ...log };
+  if (raw._id && raw.id == null) raw.id = String(raw._id);
+  raw.vehicle = vehicle || raw.vehicle;
+  raw.maintenanceCategory = category || raw.maintenanceCategory;
+  return presentMaintenance(raw);
 }
 
 async function voidExpense(expense, reason = 'Linked vehicle log could not be saved') {
@@ -264,20 +290,56 @@ async function voidExpense(expense, reason = 'Linked vehicle log could not be sa
 }
 
 
+function isDriverDepartment(department) {
+  if (!department) return false;
+  const name = String(department.name || '').trim().toLowerCase();
+  const code = String(department.code || '').trim().toLowerCase();
+  return name === 'driver' || code === 'driver';
+}
+
 async function loadAssignmentTargets(body) {
   const [site, driver] = await Promise.all([
     requireDoc(Site, body.siteId, 'Site'),
     body.driverId
-      ? requireDoc(Employee, body.driverId, 'Employee')
+      ? Employee.findById(body.driverId).populate('department', 'name code isActive')
       : null,
   ]);
   if (site.status !== 'active') {
     throw new AppError('Vehicles can only be assigned to an active site', 400, 'BAD_REQUEST');
   }
+  if (body.driverId && !driver) {
+    throw new AppError('Employee not found', 404, 'NOT_FOUND');
+  }
   if (driver && driver.status !== 'active') {
     throw new AppError('Driver must be an active employee', 400, 'BAD_REQUEST');
   }
+  if (driver && !isDriverDepartment(driver.department)) {
+    throw new AppError(
+      'Only employees from the Driver department can be assigned to a vehicle',
+      400,
+      'BAD_REQUEST'
+    );
+  }
   return { site, driver };
+}
+
+async function assertDriverSiteAvailable(siteId, driverId, excludeVehicleId) {
+  if (!driverId) return;
+
+  const active = await Assignment.findOne({
+    site: siteId,
+    driver: driverId,
+    releasedAt: null,
+    vehicle: { $ne: excludeVehicleId },
+  }).select('_id vehicle');
+
+  if (active) {
+    throw new AppError(
+      'This driver and site are already assigned to another vehicle. Release that assignment first',
+      409,
+      'CONFLICT'
+    );
+  }
 }
 
 function presentCreatedAssignment(assignment, site, driver) {
@@ -477,6 +539,7 @@ const service = {
     }
 
     const { site, driver } = await loadAssignmentTargets(body);
+    await assertDriverSiteAvailable(site._id, driver && driver._id, vehicle._id);
 
     const assignment = await Assignment.create({
       vehicle: vehicle._id,
@@ -592,16 +655,20 @@ const service = {
   },
 
   async addMaintenance(id, body, user) {
-    const vehicle = await getMutable(id);
+    const [vehicle, category] = await Promise.all([
+      Vehicle.findById(id)
+        .select('status code registrationNumber vehicleType make modelName')
+        .lean(),
+      MaintenanceCategory.findById(body.maintenanceCategoryId)
+        .select('name description status')
+        .lean(),
+    ]);
+
+    if (!vehicle) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
     if (vehicle.status === 'inactive') {
       throw new AppError('Inactive vehicles cannot be sent for maintenance', 400, 'BAD_REQUEST');
     }
-
-    const category = await requireDoc(
-      MaintenanceCategory,
-      body.maintenanceCategoryId,
-      'Maintenance category'
-    );
+    if (!category) throw new AppError('Maintenance category not found', 404, 'NOT_FOUND');
     if (category.status !== 'active') {
       throw new AppError('Maintenance category is inactive', 400, 'BAD_REQUEST');
     }
@@ -613,6 +680,7 @@ const service = {
 
     const date = body.date || new Date();
     const description = body.description || `${category.name} — ${body.paidTo}`;
+    const vehicleId = String(vehicle._id);
 
     let expense;
     if (body.recordExpense) {
@@ -620,7 +688,7 @@ const service = {
         category: 'vehicle',
         amount,
         expenseDate: date,
-        vehicleId: vehicle.id,
+        vehicleId,
         payeeName: body.payeeName || body.paidTo || 'Maintenance vendor',
         description,
         paymentModeNote: body.paymentModeNote || body.modeOfPayment,
@@ -640,7 +708,7 @@ const service = {
         description,
         expense: expense && expense._id,
       });
-      return log.populate('maintenanceCategory', 'name description status');
+      return presentMaintenanceFromParts(log, vehicle, category);
     } catch (error) {
       await voidExpense(expense);
       throw error;
@@ -648,33 +716,133 @@ const service = {
   },
 
   async listAllMaintenance(query) {
-    const filter = {};
-    if (query.vehicleId) filter.vehicle = query.vehicleId;
-    if (query.maintenanceCategoryId) filter.maintenanceCategory = query.maintenanceCategoryId;
-    if (query.from || query.to) {
-      filter.date = {};
-      if (query.from) filter.date.$gte = startOfUtcDay(query.from);
-      if (query.to) filter.date.$lte = endOfUtcDay(query.to);
-    }
-    if (query.search) {
-      const pattern = containsRegex(query.search);
-      filter.$or = [{ paidTo: pattern }, { reference: pattern }, { description: pattern }];
-    }
+    const page = query.page || 1;
+    const limit = query.limit || 20;
+    const skip = (page - 1) * limit;
+    const sort = parseSort(query.sort, MAINTENANCE_SORT, { date: -1 });
+    const filter = buildMaintenanceListFilter(query);
 
-    const result = await new BaseRepository(Maintenance).paginate({
-      filter,
-      page: query.page,
-      limit: query.limit,
-      sort: parseSort(query.sort, MAINTENANCE_SORT, { date: -1 }),
-      populate: MAINTENANCE_POPULATE,
-      lean: true,
-    });
-    result.items = await presentMaintenanceList(result.items);
-    return result;
+    const [facet = {}] = await Maintenance.aggregate([
+      { $match: filter },
+      {
+        $facet: {
+          items: [
+            { $sort: sort },
+            { $skip: skip },
+            { $limit: limit },
+            {
+              $lookup: {
+                from: COLLECTIONS.vehicles,
+                localField: 'vehicle',
+                foreignField: '_id',
+                pipeline: [
+                  {
+                    $project: {
+                      code: 1,
+                      registrationNumber: 1,
+                      vehicleType: 1,
+                      status: 1,
+                      make: 1,
+                      modelName: 1,
+                    },
+                  },
+                ],
+                as: 'vehicleDocs',
+              },
+            },
+            {
+              $lookup: {
+                from: COLLECTIONS.vehicleMaintenanceCategories,
+                localField: 'maintenanceCategory',
+                foreignField: '_id',
+                pipeline: [{ $project: { name: 1, description: 1, status: 1 } }],
+                as: 'categoryDocs',
+              },
+            },
+            {
+              $addFields: {
+                vehicle: { $arrayElemAt: ['$vehicleDocs', 0] },
+                maintenanceCategory: { $arrayElemAt: ['$categoryDocs', 0] },
+              },
+            },
+            {
+              $lookup: {
+                from: COLLECTIONS.vehicleTypes,
+                localField: 'vehicle.vehicleType',
+                foreignField: '_id',
+                pipeline: [{ $project: { name: 1, description: 1, status: 1 } }],
+                as: 'vehicleTypeDocs',
+              },
+            },
+            {
+              $addFields: {
+                vehicle: {
+                  $cond: [
+                    { $eq: [{ $type: '$vehicle' }, 'object'] },
+                    {
+                      $mergeObjects: [
+                        '$vehicle',
+                        { vehicleType: { $arrayElemAt: ['$vehicleTypeDocs', 0] } },
+                      ],
+                    },
+                    '$vehicle',
+                  ],
+                },
+              },
+            },
+            {
+              $project: {
+                vehicleDocs: 0,
+                categoryDocs: 0,
+                vehicleTypeDocs: 0,
+                __v: 0,
+              },
+            },
+          ],
+          total: [{ $count: 'count' }],
+          categoryCounts: [
+            { $group: { _id: '$maintenanceCategory', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+            {
+              $lookup: {
+                from: COLLECTIONS.vehicleMaintenanceCategories,
+                localField: '_id',
+                foreignField: '_id',
+                pipeline: [{ $project: { name: 1, description: 1, status: 1 } }],
+                as: 'categoryDocs',
+              },
+            },
+            {
+              $project: {
+                count: 1,
+                maintenanceCategory: { $arrayElemAt: ['$categoryDocs', 0] },
+              },
+            },
+          ],
+        },
+      },
+    ]);
+
+    const total = facet.total && facet.total[0] ? facet.total[0].count : 0;
+    return {
+      items: presentMaintenanceList(facet.items || []),
+      categoryCounts: (facet.categoryCounts || []).map((row) => ({
+        maintenanceCategory: presentCategoryBrief(row.maintenanceCategory)
+          || (row._id ? { id: String(row._id) } : null),
+        count: row.count,
+      })),
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: total === 0 ? 1 : Math.ceil(total / limit),
+      },
+    };
   },
 
   async listMaintenance(id, query) {
-    await getMutable(id);
+    const exists = await Vehicle.exists({ _id: id });
+    if (!exists) throw new AppError('Vehicle not found', 404, 'NOT_FOUND');
     return this.listAllMaintenance({ ...query, vehicleId: id });
   },
 
@@ -682,12 +850,12 @@ const service = {
     const log = await Maintenance.findById(id);
     if (!log) throw new AppError('Maintenance log not found', 404, 'NOT_FOUND');
 
+    let category = null;
     if (body.maintenanceCategoryId) {
-      const category = await requireDoc(
-        MaintenanceCategory,
-        body.maintenanceCategoryId,
-        'Maintenance category'
-      );
+      category = await MaintenanceCategory.findById(body.maintenanceCategoryId)
+        .select('name description status')
+        .lean();
+      if (!category) throw new AppError('Maintenance category not found', 404, 'NOT_FOUND');
       if (category.status !== 'active') {
         throw new AppError('Maintenance category is inactive', 400, 'BAD_REQUEST');
       }
@@ -713,7 +881,7 @@ const service = {
         category: 'vehicle',
         amount,
         expenseDate: log.date || new Date(),
-        vehicleId: log.vehicle.toString(),
+        vehicleId: String(log.vehicle),
         payeeName: body.payeeName || log.paidTo || 'Maintenance vendor',
         description: log.description || 'Vehicle maintenance',
         paymentModeNote: body.paymentModeNote || log.modeOfPayment,
@@ -722,8 +890,18 @@ const service = {
     }
 
     await log.save();
-    await log.populate(MAINTENANCE_POPULATE);
-    return presentMaintenance(log);
+
+    const [vehicle, categoryDoc] = await Promise.all([
+      Vehicle.findById(log.vehicle)
+        .select('status code registrationNumber vehicleType make modelName')
+        .lean(),
+      category
+        || MaintenanceCategory.findById(log.maintenanceCategory)
+          .select('name description status')
+          .lean(),
+    ]);
+
+    return presentMaintenanceFromParts(log, vehicle, categoryDoc);
   },
 
   async removeMaintenance(id) {

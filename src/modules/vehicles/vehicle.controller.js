@@ -43,12 +43,18 @@ const addMaintenance = asyncHandler(async (req, res) => {
 
 const listAllMaintenance = asyncHandler(async (req, res) => {
   const result = await service.listAllMaintenance(req.query);
-  return ok(res, result.items, 'Maintenance logs fetched', result.meta);
+  return ok(res, {
+    items: result.items,
+    categoryCounts: result.categoryCounts,
+  }, 'Maintenance logs fetched', result.meta);
 });
 
 const listMaintenance = asyncHandler(async (req, res) => {
   const result = await service.listMaintenance(req.params.id, req.query);
-  return ok(res, result.items, 'Maintenance logs fetched', result.meta);
+  return ok(res, {
+    items: result.items,
+    categoryCounts: result.categoryCounts,
+  }, 'Maintenance logs fetched', result.meta);
 });
 
 const updateMaintenance = asyncHandler(async (req, res) => {

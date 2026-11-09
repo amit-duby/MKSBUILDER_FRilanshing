@@ -21,7 +21,7 @@ const advanceSchema = new mongoose.Schema(
       default: [],
     },
     reasonForAdvance: { type: String, required: true, trim: true, maxlength: 500 },
-    attachment: { type: String, trim: true, maxlength: 500, default: null },
+    attachment: { type: String, trim: true, default: null },
     employeeRemarks: { type: String, trim: true, maxlength: 500, default: '' },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
     isVoid: { type: Boolean, default: false, index: true },

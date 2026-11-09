@@ -33,10 +33,30 @@ async function present(id) {
   return doc;
 }
 
-async function buildPayload(body) {
+async function buildPayload(body, options = {}) {
   assertExpenseShape(body);
   if (!(Number(body.amount) > 0)) {
     throw new AppError('Amount must be greater than zero', 400, 'BAD_REQUEST');
+  }
+
+  if (options.trustRefs) {
+    if (!body.payeeName) {
+      throw new AppError('Payee name is required', 400, 'BAD_REQUEST');
+    }
+    return {
+      category: body.category,
+      amount: roundMoney(body.amount),
+      expenseDate: body.expenseDate || new Date(),
+      description: body.description,
+      payeeName: body.payeeName,
+      employee: body.employeeId,
+      project: body.projectId,
+      site: body.siteId,
+      vehicle: body.vehicleId,
+      item: body.itemId,
+      referenceNo: body.referenceNo || '',
+      paymentModeNote: body.paymentModeNote,
+    };
   }
 
   const [links, employee, vehicle, item] = await Promise.all([
@@ -68,9 +88,9 @@ async function buildPayload(body) {
   };
 }
 
-async function create(body, user) {
+async function create(body, user, options = {}) {
   const [payload, code] = await Promise.all([
-    buildPayload(body),
+    buildPayload(body, options),
     nextCode('expense', 'EXP'),
   ]);
   const doc = await Expense.create({
@@ -79,6 +99,7 @@ async function create(body, user) {
     createdBy: user && user.id,
     isVoid: false,
   });
+  if (options.present === false) return doc;
   return presentDoc(doc);
 }
 
