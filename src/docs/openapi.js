@@ -890,6 +890,52 @@ const schemas = {
     },
     ['amount']
   ),
+  PayrollRow: modelSchema({
+    employeeId: objectId,
+    employeeName: { type: 'string', example: 'Rahul Verma' },
+    employeeCode: { type: 'string', example: 'EMP-0001' },
+    siteId: { ...objectId, nullable: true },
+    siteName: { type: 'string', example: 'Site_B' },
+    payBasis: { type: 'string', enum: PAY_BASIS, example: 'monthly' },
+    basicSalary: { ...money, example: 30000, description: 'Employee master basic salary (salary.baseAmount)' },
+    daysPresent: { type: 'number', example: 22 },
+    daysInPeriod: { type: 'number', example: 26 },
+    basic: { ...money, example: 25384.62, description: 'Period basic pay calculated from basicSalary + attendance' },
+    extraShifts: { ...money, example: 0 },
+    advance: { ...money, example: 2000, description: 'Outstanding advance total (0 if none)' },
+    advances: {
+      type: 'array',
+      description: 'Present only when outstanding advance exists',
+      items: {
+        type: 'object',
+        properties: {
+          advanceId: objectId,
+          code: { type: 'string', example: 'ADV-0001' },
+          requestDate: dateTimeString,
+          advanceAmount: money,
+          recoveredAmount: money,
+          outstanding: money,
+        },
+      },
+    },
+    netPay: { ...money, example: 23384.62 },
+    isPaid: { type: 'boolean', example: false },
+    paidAt: { ...dateTimeString, nullable: true },
+  }),
+  PayrollSheet: schemaObject({
+    periodMonth: { type: 'integer', example: 11 },
+    periodYear: { type: 'integer', example: 2026 },
+    workingDaysInMonth: { type: 'integer', example: 26 },
+    summary: {
+      type: 'object',
+      properties: {
+        gross: money,
+        advanceRecovery: money,
+        netPayable: money,
+      },
+    },
+    items: { type: 'array', items: namedRef('PayrollRow') },
+  }),
   VoidBody: schemaObject(
     {
       reason: { type: 'string', minLength: 5, maxLength: 300, example: 'Duplicate entry removed' },
@@ -1394,34 +1440,6 @@ const schemas = {
     voidedAt: { ...dateTimeString, nullable: true },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
-  }),
-  AdvancePayableList: schemaObject({
-    summary: schemaObject({
-      gross: { ...money, example: 0 },
-      advanceRecovery: { ...money, example: 0 },
-      netPayable: { ...money, example: 0 },
-    }),
-    items: {
-      type: 'array',
-      items: schemaObject({
-        employeeId: objectId,
-        advanceIds: { type: 'array', items: objectId },
-        fullName: { type: 'string', example: 'Rahul Verma' },
-        initials: { type: 'string', example: 'RV' },
-        employeeCode: { type: 'string', example: 'EMP-0001' },
-        siteId: { ...objectId, nullable: true },
-        siteName: { type: 'string', example: 'Site_B' },
-        note: { type: 'string', nullable: true, example: 'Imprest amount' },
-        daysPresent: { type: 'number', example: 0 },
-        workingDays: { type: 'integer', example: 25 },
-        basic: money,
-        extraShifts: money,
-        advance: { ...money, nullable: true },
-        advanceRecovery: money,
-        netPay: money,
-        canPay: { type: 'boolean', example: true },
-      }),
-    },
   }),
   EmployeeAssignment: modelSchema({
     id: objectId,
@@ -2345,21 +2363,6 @@ const spec = {
         }),
       }),
     },
-    '/accounts/advances/payable': {
-      get: operation('Accounts', 'Advance payable list for payroll screen', {
-        parameters: [
-          ...paging,
-          query('employeeId', objectId),
-          query('departmentId', objectId),
-          query('siteId', objectId),
-          query('periodMonth', { type: 'integer', minimum: 1, maximum: 12 }),
-          query('periodYear', { type: 'integer', minimum: 2000, maximum: 2100 }),
-          query('from', dateString),
-          query('to', dateString),
-        ],
-        data: 'AdvancePayableList',
-      }),
-    },
     '/accounts/advances/{id}': {
       get: operation('Accounts', 'Get an advance request', { parameters: [pathParam()], data: 'Advance' }),
       patch: operation('Accounts', 'Update an advance request', {
@@ -2386,6 +2389,31 @@ const spec = {
         parameters: [pathParam()],
         data: 'Advance',
         body: jsonBody(ref('VoidBody'), { reason: 'Entered for the wrong employee' }),
+      }),
+    },
+    '/accounts/payroll': {
+      get: operation('Accounts', 'Payroll sheet for a month (computed from attendance, salary, and advances; previous IST month auto-saves)', {
+        parameters: [
+          ...paging,
+          {
+            name: 'periodMonth',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 1, maximum: 12 },
+            description: 'Payroll month (1-12). Omit with periodYear to use current Asia/Kolkata month.',
+          },
+          {
+            name: 'periodYear',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 2000, maximum: 2100 },
+            description: 'Payroll year. Omit with periodMonth to use current Asia/Kolkata month.',
+          },
+          query('siteId', objectId),
+          query('employeeId', objectId),
+        ],
+        data: 'PayrollSheet',
+        list: true,
       }),
     },
     '/impress-amounts': {

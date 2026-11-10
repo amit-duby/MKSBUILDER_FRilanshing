@@ -57,6 +57,7 @@ const COLLECTIONS = {
   salaryRecords: 'salary_records',
   expenses: 'expenses',
   employeeAdvances: 'employee_advances',
+  payrollPayments: 'payroll_payments',
   impressAmounts: 'impress_amounts',
   localAmounts: 'local_amounts',
   projectDetails: 'project_details',

@@ -3,6 +3,7 @@ const logger = require('./common/utils/logger');
 const { connectDatabase, disconnectDatabase } = require('./config/database');
 const app = require('./app');
 const { dropStaleIndexes } = require('./seed/dropStaleIndexes');
+const { startPayrollCloseJob, stopPayrollCloseJob } = require('./jobs/payrollClose.job');
 
 const config = getConfig();
 
@@ -16,10 +17,12 @@ async function start() {
 
   const server = app.listen(config.PORT, () => {
     logger.info({ port: config.PORT }, 'Construction ERP API listening');
+    startPayrollCloseJob();
   });
 
   async function shutdown(signal) {
     logger.info({ signal }, 'Shutting down');
+    stopPayrollCloseJob();
     server.close(async () => {
       await disconnectDatabase();
       process.exit(0);

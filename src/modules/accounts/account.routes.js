@@ -23,11 +23,12 @@ router.patch('/expenses/:id', validate(schema.updateExpense), controller.updateE
 router.post('/expenses/:id/void', validate(schema.voidExpense), controller.voidExpense);
 
 router.get('/advances', validate(schema.listAdvances), controller.listAdvances);
-router.get('/advances/payable', validate(schema.listAdvancePayable), controller.listAdvancePayable);
 router.post('/advances', advanceUpload, validate(schema.createAdvance), controller.createAdvance);
 router.get('/advances/:id', validate(schema.byId), controller.getAdvance);
 router.patch('/advances/:id', advanceUpload, validate(schema.updateAdvance), controller.updateAdvance);
 router.post('/advances/:id/recover', validate(schema.recoverAdvance), controller.recoverAdvance);
 router.post('/advances/:id/void', validate(schema.voidAdvance), controller.voidAdvance);
+
+router.get('/payroll', validate(schema.listPayroll), controller.listPayroll);
 
 module.exports = router;

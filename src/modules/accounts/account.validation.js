@@ -153,17 +153,6 @@ module.exports = {
       to: dateValue.optional(),
     }),
   }),
-  listAdvancePayable: requestSchema({
-    query: listQuery({
-      employeeId: objectId.optional(),
-      departmentId: objectId.optional(),
-      siteId: objectId.optional(),
-      periodMonth: z.coerce.number().int().min(1).max(12).optional(),
-      periodYear: z.coerce.number().int().min(2000).max(2100).optional(),
-      from: dateValue.optional(),
-      to: dateValue.optional(),
-    }),
-  }),
   createAdvance: requestSchema({ body: advanceBody }),
   updateAdvance: requestSchema({ params: idParams, body: advanceUpdate }),
   recoverAdvance: requestSchema({
@@ -177,4 +166,13 @@ module.exports = {
     }),
   }),
   voidAdvance: requestSchema({ params: idParams, body: voidBody }),
+  listPayroll: requestSchema({
+    query: listQuery({
+      // Omit both to default to the current Asia/Kolkata month.
+      periodMonth: z.coerce.number().int().min(1).max(12).optional(),
+      periodYear: z.coerce.number().int().min(2000).max(2100).optional(),
+      siteId: objectId.optional(),
+      employeeId: objectId.optional(),
+    }),
+  }),
 };

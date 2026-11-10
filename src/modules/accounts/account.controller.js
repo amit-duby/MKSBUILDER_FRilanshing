@@ -4,6 +4,7 @@ const salaryService = require('./salary.service');
 const expenseService = require('./expense.service');
 const statementService = require('./statement.service');
 const advanceService = require('./advance.service');
+const payrollService = require('./payroll.service');
 
 const listSalaries = asyncHandler(async (req, res) => {
   const result = await salaryService.list(req.query);
@@ -73,14 +74,6 @@ const listAdvances = asyncHandler(async (req, res) => {
   }, 'Advance requests fetched', result.meta);
 });
 
-const listAdvancePayable = asyncHandler(async (req, res) => {
-  const result = await advanceService.listPayable(req.query);
-  return ok(res, {
-    summary: result.summary,
-    items: result.items,
-  }, 'Advance payable list fetched', result.meta);
-});
-
 const createAdvance = asyncHandler(async (req, res) => {
   const data = await advanceService.create(req.body, req.user);
   return created(res, data, 'Advance request saved');
@@ -106,6 +99,17 @@ const voidAdvance = asyncHandler(async (req, res) => {
   return ok(res, data, 'Advance request voided');
 });
 
+const listPayroll = asyncHandler(async (req, res) => {
+  const result = await payrollService.list(req.query);
+  return ok(res, {
+    periodMonth: result.periodMonth,
+    periodYear: result.periodYear,
+    workingDaysInMonth: result.workingDaysInMonth,
+    summary: result.summary,
+    items: result.items,
+  }, 'Payroll sheet fetched', result.meta);
+});
+
 module.exports = {
   listSalaries,
   createSalary,
@@ -120,10 +124,10 @@ module.exports = {
   summary,
   statement,
   listAdvances,
-  listAdvancePayable,
   createAdvance,
   getAdvance,
   updateAdvance,
   recoverAdvance,
   voidAdvance,
+  listPayroll,
 };
