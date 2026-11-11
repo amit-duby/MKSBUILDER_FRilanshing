@@ -902,10 +902,14 @@ const schemas = {
     daysInPeriod: { type: 'number', example: 26 },
     basic: { ...money, example: 25384.62, description: 'Period basic pay calculated from basicSalary + attendance' },
     extraShifts: { ...money, example: 0 },
-    advance: { ...money, example: 2000, description: 'Outstanding advance total (0 if none)' },
+    advance: {
+      ...money,
+      example: 2000,
+      description: 'Outstanding advances taken in this payroll month only (0 if none)',
+    },
     advances: {
       type: 'array',
-      description: 'Present only when outstanding advance exists',
+      description: 'Present only when this-month outstanding advance exists',
       items: {
         type: 'object',
         properties: {
@@ -926,6 +930,7 @@ const schemas = {
     periodMonth: { type: 'integer', example: 11 },
     periodYear: { type: 'integer', example: 2026 },
     workingDaysInMonth: { type: 'integer', example: 26 },
+    payBasis: { type: 'string', enum: PAY_BASIS, nullable: true, example: 'monthly' },
     summary: {
       type: 'object',
       properties: {
@@ -935,6 +940,57 @@ const schemas = {
       },
     },
     items: { type: 'array', items: namedRef('PayrollRow') },
+  }),
+  PayrollPay: schemaObject(
+    {
+      periodMonth: { type: 'integer', minimum: 1, maximum: 12, example: 11 },
+      periodYear: { type: 'integer', minimum: 2000, maximum: 2100, example: 2026 },
+      employeeId: objectId,
+    },
+    ['periodMonth', 'periodYear', 'employeeId']
+  ),
+  PayrollPayResult: schemaObject({
+    paymentId: objectId,
+    periodMonth: { type: 'integer', example: 11 },
+    periodYear: { type: 'integer', example: 2026 },
+    item: namedRef('PayrollRow'),
+  }),
+  PayrollAdvanceMonth: schemaObject({
+    periodMonth: { type: 'integer', example: 11 },
+    periodYear: { type: 'integer', example: 2026 },
+    advanceAmount: money,
+    recoveredAmount: money,
+    outstanding: money,
+    items: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          advanceId: objectId,
+          code: { type: 'string', example: 'ADV-0002' },
+          requestDate: dateTimeString,
+          advanceAmount: money,
+          recoveredAmount: money,
+          outstanding: money,
+        },
+      },
+    },
+  }),
+  PayrollAdvanceSummary: schemaObject({
+    totalAdvance: money,
+    totalRecovered: money,
+    totalOutstanding: money,
+    byMonth: { type: 'array', items: namedRef('PayrollAdvanceMonth') },
+  }),
+  PayrollByIdResult: schemaObject({
+    idType: { type: 'string', enum: ['employee', 'payroll'], example: 'employee' },
+    paymentId: { ...objectId, nullable: true },
+    periodMonth: { type: 'integer', example: 11 },
+    periodYear: { type: 'integer', example: 2026 },
+    workingDaysInMonth: { type: 'integer', example: 25 },
+    payBasis: { type: 'string', enum: PAY_BASIS, example: 'monthly' },
+    item: namedRef('PayrollRow'),
+    advanceSummary: namedRef('PayrollAdvanceSummary'),
   }),
   VoidBody: schemaObject(
     {
@@ -2411,9 +2467,44 @@ const spec = {
           },
           query('siteId', objectId),
           query('employeeId', objectId),
+          query('payBasis', { type: 'string', enum: PAY_BASIS }, 'Filter rows by monthly or daily pay basis'),
         ],
         data: 'PayrollSheet',
         list: true,
+      }),
+    },
+    '/accounts/payroll/pay': {
+      post: operation('Accounts', 'Pay one employee for the selected period (sets isPaid=true, paidAt, recovers advance)', {
+        status: '201',
+        data: 'PayrollPayResult',
+        body: jsonBody(ref('PayrollPay'), {
+          periodMonth: 11,
+          periodYear: 2026,
+          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
+        }),
+      }),
+    },
+    '/accounts/payroll/{id}': {
+      get: operation('Accounts', 'Get one payroll row by payroll payment id or employee id', {
+        parameters: [
+          pathParam(),
+          {
+            name: 'periodMonth',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 1, maximum: 12 },
+            description: 'Used when id is employeeId. Ignored for payroll payment id.',
+          },
+          {
+            name: 'periodYear',
+            in: 'query',
+            required: false,
+            schema: { type: 'integer', minimum: 2000, maximum: 2100 },
+            description: 'Used when id is employeeId. Ignored for payroll payment id.',
+          },
+          query('payBasis', { type: 'string', enum: PAY_BASIS }),
+        ],
+        data: 'PayrollByIdResult',
       }),
     },
     '/impress-amounts': {

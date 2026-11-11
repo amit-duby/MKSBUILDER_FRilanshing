@@ -30,5 +30,7 @@ router.post('/advances/:id/recover', validate(schema.recoverAdvance), controller
 router.post('/advances/:id/void', validate(schema.voidAdvance), controller.voidAdvance);
 
 router.get('/payroll', validate(schema.listPayroll), controller.listPayroll);
+router.post('/payroll/pay', validate(schema.payPayroll), controller.payPayroll);
+router.get('/payroll/:id', validate(schema.getPayrollById), controller.getPayrollById);
 
 module.exports = router;

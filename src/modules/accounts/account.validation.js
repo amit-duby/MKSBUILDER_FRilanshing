@@ -173,6 +173,23 @@ module.exports = {
       periodYear: z.coerce.number().int().min(2000).max(2100).optional(),
       siteId: objectId.optional(),
       employeeId: objectId.optional(),
+      payBasis: z.enum(PAY_BASIS).optional(),
+    }),
+  }),
+  getPayrollById: requestSchema({
+    params: idParams,
+    query: z.object({
+      // Used when :id is an employeeId. Ignored when :id is a payroll payment id.
+      periodMonth: z.coerce.number().int().min(1).max(12).optional(),
+      periodYear: z.coerce.number().int().min(2000).max(2100).optional(),
+      payBasis: z.enum(PAY_BASIS).optional(),
+    }),
+  }),
+  payPayroll: requestSchema({
+    body: z.object({
+      periodMonth: z.number().int().min(1).max(12),
+      periodYear: z.number().int().min(2000).max(2100),
+      employeeId: objectId,
     }),
   }),
 };

@@ -209,13 +209,15 @@ async function loadAttendanceByEmployee(employeeIds, from, to) {
   return map;
 }
 
-async function loadAdvanceByEmployee(employeeIds) {
+async function loadAdvanceByEmployee(employeeIds, from, to) {
   if (!employeeIds.length) return new Map();
   const rows = await Advance.aggregate([
     {
       $match: {
         employee: { $in: employeeIds },
         isVoid: false,
+        // Only advances taken in this payroll month.
+        requestDate: { $gte: from, $lte: to },
       },
     },
     {
@@ -315,7 +317,7 @@ async function buildSheet(query) {
   const [sites, attendance, advances, paid] = await Promise.all([
     loadSiteByEmployee(ids, siteId),
     loadAttendanceByEmployee(ids, from, to),
-    loadAdvanceByEmployee(ids),
+    loadAdvanceByEmployee(ids, from, to),
     loadPaidByEmployee(ids, periodMonth, periodYear),
   ]);
 
@@ -371,17 +373,25 @@ async function buildSheet(query) {
     });
   });
 
+  const payBasisFilter = query.payBasis === 'monthly' || query.payBasis === 'daily'
+    ? query.payBasis
+    : null;
+  const filtered = payBasisFilter
+    ? items.filter((row) => row.payBasis === payBasisFilter)
+    : items;
+
   const page = query.page || 1;
   const limit = query.limit || 20;
-  const total = items.length;
+  const total = filtered.length;
   const start = (page - 1) * limit;
-  const paged = items.slice(start, start + limit);
+  const paged = filtered.slice(start, start + limit);
 
   return {
     periodMonth,
     periodYear,
     workingDaysInMonth: workingDays,
-    summary: summarize(items),
+    payBasis: payBasisFilter,
+    summary: summarize(filtered),
     items: paged,
     meta: {
       page,
@@ -392,14 +402,19 @@ async function buildSheet(query) {
   };
 }
 
-async function recoverAdvancesForEmployee(employeeId, amount, user) {
+async function recoverAdvancesForEmployee(employeeId, amount, user, from, to) {
   let remaining = roundMoney(amount);
   if (!(remaining > 0)) return 0;
 
-  const advances = await Advance.find({
+  const filter = {
     employee: employeeId,
     isVoid: false,
-  }).sort({ requestDate: 1 });
+  };
+  if (from && to) {
+    filter.requestDate = { $gte: from, $lte: to };
+  }
+
+  const advances = await Advance.find(filter).sort({ requestDate: 1 });
 
   let recoveredTotal = 0;
   for (const doc of advances) {
@@ -411,7 +426,7 @@ async function recoverAdvancesForEmployee(employeeId, amount, user) {
     doc.recoveries.push({
       amount: take,
       recoveredAt: new Date(),
-      remarks: 'Payroll auto recovery',
+      remarks: 'Payroll recovery',
       createdBy: user && user.id,
     });
     doc.recoveredAmount = roundMoney((doc.recoveredAmount || 0) + take);
@@ -442,7 +457,8 @@ async function persistEmployeeRow(row, periodMonth, periodYear, user) {
     });
 
     if (row.advance > 0) {
-      await recoverAdvancesForEmployee(row.employeeId, row.advance, user);
+      const { from, to } = periodRange(periodYear, periodMonth);
+      await recoverAdvancesForEmployee(row.employeeId, row.advance, user, from, to);
     }
 
     return payment;
@@ -499,8 +515,196 @@ async function list(query) {
   return buildSheet(query);
 }
 
+async function loadEmployeeAdvanceSummary(employeeId) {
+  const rows = await Advance.find({
+    employee: employeeId,
+    isVoid: false,
+  })
+    .select('code requestDate advanceAmount recoveredAmount')
+    .sort({ requestDate: 1 })
+    .lean();
+
+  const byMonthMap = new Map();
+  let totalAdvance = 0;
+  let totalRecovered = 0;
+  let totalOutstanding = 0;
+
+  for (const row of rows) {
+    const amount = roundMoney(row.advanceAmount || 0);
+    const recovered = roundMoney(row.recoveredAmount || 0);
+    const outstanding = roundMoney(amount - recovered);
+    const ist = getIstParts(row.requestDate ? new Date(row.requestDate) : new Date());
+    const key = `${ist.year}-${ist.month}`;
+
+    if (!byMonthMap.has(key)) {
+      byMonthMap.set(key, {
+        periodMonth: ist.month,
+        periodYear: ist.year,
+        advanceAmount: 0,
+        recoveredAmount: 0,
+        outstanding: 0,
+        items: [],
+      });
+    }
+
+    const bucket = byMonthMap.get(key);
+    bucket.advanceAmount = roundMoney(bucket.advanceAmount + amount);
+    bucket.recoveredAmount = roundMoney(bucket.recoveredAmount + recovered);
+    bucket.outstanding = roundMoney(bucket.outstanding + outstanding);
+    bucket.items.push({
+      advanceId: String(row._id),
+      code: row.code || '',
+      requestDate: row.requestDate || null,
+      advanceAmount: amount,
+      recoveredAmount: recovered,
+      outstanding,
+    });
+
+    totalAdvance = roundMoney(totalAdvance + amount);
+    totalRecovered = roundMoney(totalRecovered + recovered);
+    totalOutstanding = roundMoney(totalOutstanding + outstanding);
+  }
+
+  const byMonth = Array.from(byMonthMap.values()).sort((a, b) => {
+    if (a.periodYear !== b.periodYear) return b.periodYear - a.periodYear;
+    return b.periodMonth - a.periodMonth;
+  });
+
+  return {
+    totalAdvance,
+    totalRecovered,
+    totalOutstanding,
+    byMonth,
+  };
+}
+
+async function getByEmployeeId(employeeId, query = {}) {
+  const sheet = await buildSheet({
+    ...query,
+    employeeId,
+    page: 1,
+    limit: 1,
+  });
+  const item = sheet.items[0];
+  if (!item) throw new AppError('Employee not found or inactive', 404, 'NOT_FOUND');
+
+  const [payment, advanceSummary] = await Promise.all([
+    PayrollPayment.findOne({
+      employee: employeeId,
+      periodMonth: sheet.periodMonth,
+      periodYear: sheet.periodYear,
+    }).select('_id').lean(),
+    loadEmployeeAdvanceSummary(employeeId),
+  ]);
+
+  return {
+    idType: 'employee',
+    paymentId: payment ? String(payment._id) : null,
+    periodMonth: sheet.periodMonth,
+    periodYear: sheet.periodYear,
+    workingDaysInMonth: sheet.workingDaysInMonth,
+    payBasis: sheet.payBasis || item.payBasis,
+    item,
+    advanceSummary,
+  };
+}
+
+async function getByPayrollId(paymentId) {
+  const payment = await PayrollPayment.findById(paymentId).lean();
+  if (!payment) return null;
+
+  const employeeId = String(payment.employee);
+  const [sheet, advanceSummary] = await Promise.all([
+    buildSheet({
+      periodMonth: payment.periodMonth,
+      periodYear: payment.periodYear,
+      employeeId,
+      page: 1,
+      limit: 1,
+    }),
+    loadEmployeeAdvanceSummary(employeeId),
+  ]);
+  const item = sheet.items[0];
+  if (!item) {
+    throw new AppError('Payroll payment found but employee is missing or inactive', 404, 'NOT_FOUND');
+  }
+
+  return {
+    idType: 'payroll',
+    paymentId: String(payment._id),
+    periodMonth: payment.periodMonth,
+    periodYear: payment.periodYear,
+    workingDaysInMonth: sheet.workingDaysInMonth,
+    payBasis: payment.payBasis || item.payBasis,
+    item,
+    advanceSummary,
+  };
+}
+
+async function getById(id, query = {}) {
+  const byPayroll = await getByPayrollId(id);
+  if (byPayroll) return byPayroll;
+  return getByEmployeeId(id, query);
+}
+
+async function pay(body, user) {
+  const periodMonth = Number(body.periodMonth);
+  const periodYear = Number(body.periodYear);
+  const employeeId = String(body.employeeId);
+
+  const existing = await PayrollPayment.findOne({
+    employee: employeeId,
+    periodMonth,
+    periodYear,
+  }).lean();
+  if (existing) {
+    throw new AppError('This employee is already paid for the selected period', 409, 'CONFLICT');
+  }
+
+  const sheet = await buildSheet({
+    periodMonth,
+    periodYear,
+    employeeId,
+    page: 1,
+    limit: 1,
+  });
+  const row = sheet.items[0];
+  if (!row) throw new AppError('Employee not found or inactive', 404, 'NOT_FOUND');
+  if (row.isPaid) {
+    throw new AppError('This employee is already paid for the selected period', 409, 'CONFLICT');
+  }
+
+  const payment = await persistEmployeeRow(row, periodMonth, periodYear, user);
+  if (!payment) {
+    throw new AppError('This employee is already paid for the selected period', 409, 'CONFLICT');
+  }
+
+  const refreshed = await buildSheet({
+    periodMonth,
+    periodYear,
+    employeeId,
+    page: 1,
+    limit: 1,
+  });
+
+  return {
+    paymentId: String(payment._id),
+    periodMonth,
+    periodYear,
+    item: refreshed.items[0] || {
+      ...row,
+      isPaid: true,
+      paidAt: payment.paidAt,
+      advance: row.advance,
+    },
+  };
+}
+
 module.exports = {
   list,
+  getById,
+  getByEmployeeId,
+  pay,
   persistPeriod,
   persistPreviousIstPeriod,
   currentIstPeriod,

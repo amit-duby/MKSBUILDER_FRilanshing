@@ -105,9 +105,20 @@ const listPayroll = asyncHandler(async (req, res) => {
     periodMonth: result.periodMonth,
     periodYear: result.periodYear,
     workingDaysInMonth: result.workingDaysInMonth,
+    payBasis: result.payBasis || null,
     summary: result.summary,
     items: result.items,
   }, 'Payroll sheet fetched', result.meta);
+});
+
+const getPayrollById = asyncHandler(async (req, res) => {
+  const data = await payrollService.getById(req.params.id, req.query);
+  return ok(res, data, 'Payroll row fetched');
+});
+
+const payPayroll = asyncHandler(async (req, res) => {
+  const data = await payrollService.pay(req.body, req.user);
+  return created(res, data, 'Payroll payment recorded');
 });
 
 module.exports = {
@@ -130,4 +141,6 @@ module.exports = {
   recoverAdvance,
   voidAdvance,
   listPayroll,
+  getPayrollById,
+  payPayroll,
 };
