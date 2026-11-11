@@ -11,7 +11,7 @@ const { assertSalaryPatchAllowed } = require('./salaryLock');
 
 const SORT_FIELDS = ['periodYear', 'periodMonth', 'code', 'createdAt', 'netAmount'];
 const POPULATE = [
-  { path: 'employee', select: 'fullName code designation status' },
+  { path: 'employee', select: 'fullName code designation status profilePhoto' },
   { path: 'project', select: 'name' },
   { path: 'site', select: 'name code' },
 ];

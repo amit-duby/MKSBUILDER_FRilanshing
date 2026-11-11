@@ -20,7 +20,7 @@ const POPULATE = [
     path: 'impressAmount',
     select: 'code date givenTo note employee site',
     populate: [
-      { path: 'employee', select: 'code fullName designation status' },
+      { path: 'employee', select: 'code fullName designation status profilePhoto' },
       { path: 'site', select: 'name code status' },
     ],
   },

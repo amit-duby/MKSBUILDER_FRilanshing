@@ -16,7 +16,7 @@ const Site = require('../sites/site.model');
 const repo = new BaseRepository(ImpressAmount);
 const SORT_FIELDS = ['date', 'code', 'createdAt', 'givenTo'];
 const POPULATE = [
-  { path: 'employee', select: 'code fullName designation status' },
+  { path: 'employee', select: 'code fullName designation status profilePhoto' },
   { path: 'site', select: 'name code status' },
 ];
 
@@ -32,7 +32,9 @@ function briefRef(doc, fields) {
 
 function present(doc, employee, site) {
   const json = typeof doc.toJSON === 'function' ? doc.toJSON() : { ...doc };
-  if (employee) json.employee = briefRef(employee, ['code', 'fullName', 'designation', 'status']);
+  if (employee) {
+    json.employee = briefRef(employee, ['code', 'fullName', 'designation', 'status', 'profilePhoto']);
+  }
   if (site) json.site = briefRef(site, ['name', 'code', 'status']);
   return json;
 }

@@ -12,6 +12,7 @@ const {
   calendarDayLabel,
   endOfUtcDay,
 } = require('../../common/utils/helpers');
+const { roundMoney } = require('../../common/utils/money');
 const { workedDayValue, resolveClockTimes, assertAttendanceTimes } = require('./attendanceRules');
 const Attendance = require('./attendance.model');
 const Employee = require('../employees/employee.model');
@@ -20,7 +21,7 @@ const Site = require('../sites/site.model');
 
 const SORT_FIELDS = ['attendanceDate', 'status', 'createdAt', 'code'];
 const POPULATE = [
-  { path: 'employee', select: 'code fullName designation status department' },
+  { path: 'employee', select: 'code fullName designation status department profilePhoto' },
   { path: 'site', select: 'name code status' },
 ];
 const EMPTY_TOTALS = {
@@ -34,6 +35,88 @@ const EMPTY_TOTALS = {
   workedDays: 0,
   overtimeHours: 0,
 };
+
+function daysInMonth(year, month) {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function workingDaysInMonth(year, month) {
+  const total = daysInMonth(year, month);
+  let sundays = 0;
+  for (let day = 1; day <= total; day += 1) {
+    if (new Date(Date.UTC(year, month - 1, day)).getUTCDay() === 0) sundays += 1;
+  }
+  return Math.max(total - sundays, 0);
+}
+
+function currentIstPeriod(date = new Date()) {
+  const day = startOfBusinessDay(date);
+  return {
+    periodMonth: day.getUTCMonth() + 1,
+    periodYear: day.getUTCFullYear(),
+  };
+}
+
+function resolveEmployeeAttendancePeriod(query = {}) {
+  if (query.from || query.to) {
+    const range = resolveRange(query, 1);
+    return {
+      from: range.from,
+      to: range.to,
+      periodMonth: null,
+      periodYear: null,
+      workingDaysInMonth: null,
+    };
+  }
+
+  const hasMonth = query.periodMonth !== undefined && query.periodMonth !== null && query.periodMonth !== '';
+  const hasYear = query.periodYear !== undefined && query.periodYear !== null && query.periodYear !== '';
+  let periodMonth;
+  let periodYear;
+
+  if (hasMonth || hasYear) {
+    periodMonth = Number(query.periodMonth);
+    periodYear = Number(query.periodYear);
+    if (!(periodMonth >= 1 && periodMonth <= 12) || !(periodYear >= 2000 && periodYear <= 2100)) {
+      throw new AppError('periodMonth and periodYear are required together', 400, 'BAD_REQUEST');
+    }
+  } else {
+    const current = currentIstPeriod();
+    periodMonth = current.periodMonth;
+    periodYear = current.periodYear;
+  }
+
+  const from = startOfBusinessDay(new Date(Date.UTC(periodYear, periodMonth - 1, 1)));
+  const lastDay = startOfBusinessDay(
+    new Date(Date.UTC(periodYear, periodMonth - 1, daysInMonth(periodYear, periodMonth)))
+  );
+  const to = endOfUtcDay(lastDay);
+
+  return {
+    from,
+    to,
+    periodMonth,
+    periodYear,
+    workingDaysInMonth: workingDaysInMonth(periodYear, periodMonth),
+  };
+}
+
+function presentEmployeeAttendanceItem(row) {
+  return {
+    attendanceId: String(row._id),
+    code: row.code || '',
+    attendanceDate: row.attendanceDate,
+    status: row.status,
+    siteId: row.site && (row.site._id || row.site.id)
+      ? String(row.site._id || row.site.id)
+      : (row.site ? String(row.site) : null),
+    siteName: row.site && row.site.name ? row.site.name : '',
+    checkIn: row.checkIn || null,
+    checkOut: row.checkOut || null,
+    overtimeHours: Number(row.overtimeHours) || 0,
+    remarks: row.remarks || '',
+  };
+}
 
 async function present(id) {
   const doc = await Attendance.findById(id).populate(POPULATE).lean({ virtuals: true });
@@ -51,6 +134,7 @@ function publicEmployee(employee) {
     designation: employee.designation,
     status: employee.status,
     department: employee.department,
+    profilePhoto: employee.profilePhoto || null,
   };
 }
 
@@ -324,6 +408,99 @@ const service = {
     return doc;
   },
 
+  async getByEmployee(employeeId, query = {}) {
+    const employee = await Employee.findById(employeeId)
+      .select('code fullName designation status employmentType salary department profilePhoto')
+      .populate({ path: 'department', select: 'name code' })
+      .lean({ virtuals: true });
+    if (!employee) throw new AppError('Employee not found', 404, 'NOT_FOUND');
+
+    const period = resolveEmployeeAttendancePeriod(query);
+    const [assignment, rows] = await Promise.all([
+      Assignment.findOne({ employee: employeeId, isCurrent: true })
+        .populate({ path: 'site', select: 'name code status' })
+        .lean({ virtuals: true }),
+      Attendance.find({
+        employee: employeeId,
+        attendanceDate: { $gte: period.from, $lte: period.to },
+      })
+        .populate({ path: 'site', select: 'name code status' })
+        .sort({ attendanceDate: 1 })
+        .lean({ virtuals: true }),
+    ]);
+
+    const summary = {
+      present: 0,
+      halfDay: 0,
+      absent: 0,
+      leave: 0,
+      weeklyOff: 0,
+      holiday: 0,
+      markedDays: 0,
+      workedDays: 0,
+      overtimeHours: 0,
+    };
+
+    const items = rows.map((row) => {
+      summary.markedDays += 1;
+      summary.overtimeHours = roundMoney(summary.overtimeHours + (Number(row.overtimeHours) || 0));
+      summary.workedDays = roundMoney(summary.workedDays + workedDayValue(row.status));
+
+      if (row.status === 'present') summary.present += 1;
+      else if (row.status === 'half_day') summary.halfDay += 1;
+      else if (row.status === 'absent') summary.absent += 1;
+      else if (row.status === 'leave') summary.leave += 1;
+      else if (row.status === 'weekly_off') summary.weeklyOff += 1;
+      else if (row.status === 'holiday') summary.holiday += 1;
+
+      return presentEmployeeAttendanceItem(row);
+    });
+
+    if (period.workingDaysInMonth != null) {
+      summary.unmarkedDays = Math.max(period.workingDaysInMonth - summary.markedDays, 0);
+    } else {
+      summary.unmarkedDays = null;
+    }
+
+    const payBasis = (employee.salary && employee.salary.payBasis)
+      || (employee.employmentType === 'daily_wage' ? 'daily' : 'monthly');
+
+    return {
+      employee: {
+        id: String(employee._id),
+        code: employee.code,
+        fullName: employee.fullName,
+        designation: employee.designation || '',
+        status: employee.status,
+        employmentType: employee.employmentType,
+        payBasis,
+        basicSalary: Number(employee.salary && employee.salary.baseAmount) || 0,
+        profilePhoto: employee.profilePhoto || null,
+        department: employee.department
+          ? {
+            id: String(employee.department._id || employee.department.id),
+            name: employee.department.name,
+            code: employee.department.code,
+          }
+          : null,
+        site: assignment && assignment.site
+          ? {
+            id: String(assignment.site._id || assignment.site.id),
+            name: assignment.site.name,
+            code: assignment.site.code,
+          }
+          : null,
+      },
+      periodMonth: period.periodMonth,
+      periodYear: period.periodYear,
+      from: period.from,
+      to: period.to,
+      workingDaysInMonth: period.workingDaysInMonth,
+      summary,
+      items,
+    };
+  },
+
   async update(id, body, user) {
     const doc = await Attendance.findById(id);
     if (!doc) throw new AppError('Attendance record not found', 404, 'NOT_FOUND');
@@ -487,6 +664,7 @@ const service = {
                     id: { $toString: '$_id' },
                     code: '$employee.code',
                     fullName: '$employee.fullName',
+                    profilePhoto: { $ifNull: ['$employee.profilePhoto', null] },
                   },
                   present: 1,
                   absent: 1,

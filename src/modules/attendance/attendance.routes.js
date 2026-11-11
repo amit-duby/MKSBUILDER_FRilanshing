@@ -7,6 +7,7 @@ const router = express.Router();
 
 router.get('/register', validate(schema.register), controller.register);
 router.get('/summary', validate(schema.summary), controller.summary);
+router.get('/employee/:employeeId', validate(schema.byEmployee), controller.getByEmployee);
 router.get('/', validate(schema.list), controller.list);
 router.post('/bulk', validate(schema.bulk), controller.bulk);
 router.post('/', validate(schema.mark), controller.mark);

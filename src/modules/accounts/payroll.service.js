@@ -114,6 +114,7 @@ function presentPayrollRow(row) {
     employeeId: row.employeeId,
     employeeName: row.employeeName,
     employeeCode: row.employeeCode || '',
+    profilePhoto: row.profilePhoto || null,
     siteId: row.siteId || null,
     siteName: row.siteName || '',
     payBasis: row.payBasis,
@@ -309,7 +310,7 @@ async function buildSheet(query) {
   }
 
   const employees = await Employee.find(employeeFilter)
-    .select('fullName code employmentType salary status')
+    .select('fullName code employmentType salary status profilePhoto')
     .sort({ fullName: 1 })
     .lean();
 
@@ -357,6 +358,7 @@ async function buildSheet(query) {
       employeeId: id,
       employeeName: employee.fullName,
       employeeCode: employee.code,
+      profilePhoto: employee.profilePhoto || null,
       siteId: site.siteId,
       siteName: site.siteName,
       payBasis,

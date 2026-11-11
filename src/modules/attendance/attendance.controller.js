@@ -23,6 +23,11 @@ const getById = asyncHandler(async (req, res) => {
   return ok(res, data, 'Attendance fetched');
 });
 
+const getByEmployee = asyncHandler(async (req, res) => {
+  const data = await service.getByEmployee(req.params.employeeId, req.query);
+  return ok(res, data, 'Employee attendance fetched');
+});
+
 const update = asyncHandler(async (req, res) => {
   const data = await service.update(req.params.id, req.body, req.user);
   return ok(res, data, 'Attendance updated');
@@ -53,6 +58,7 @@ module.exports = {
   mark,
   bulk,
   getById,
+  getByEmployee,
   update,
   remove,
   register,

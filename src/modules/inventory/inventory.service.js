@@ -72,7 +72,7 @@ const MOVEMENT_POPULATE = [
 const ISSUE_POPULATE = [
   { path: 'item', select: 'name sku unit code category' },
   { path: 'site', select: 'name code' },
-  { path: 'employee', select: 'fullName code designation' },
+  { path: 'employee', select: 'fullName code designation profilePhoto' },
   { path: 'vehicleType', select: 'name description status' },
 ];
 

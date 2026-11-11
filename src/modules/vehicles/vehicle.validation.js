@@ -21,6 +21,8 @@ for (const field of DOCUMENT_EXPIRY_FIELDS) {
   documentShape[field] = dateValue.nullable().optional();
 }
 
+const photoPath = z.string().trim().min(1);
+
 const vehicleFields = {
   registrationNumber: shortText(20),
   vehicleTypeId: objectId,
@@ -28,7 +30,8 @@ const vehicleFields = {
   modelName: optionalText(80),
   year: z.coerce.number().int().min(1980).max(2100).optional(),
   fuelType: z.enum(FUEL_TYPES).optional(),
-  odometer: z.number().finite().min(0).optional(),
+  vehiclePhoto: photoPath.nullable().optional(),
+  odometer: z.coerce.number().finite().min(0).optional(),
   documents: z.object(documentShape).optional(),
   notes: optionalText(1000),
 };

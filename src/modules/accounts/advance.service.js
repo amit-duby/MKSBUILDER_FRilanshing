@@ -10,7 +10,7 @@ const Employee = require('../employees/employee.model');
 
 const SORT_FIELDS = ['requestDate', 'advanceAmount', 'monthlySalary', 'code', 'createdAt'];
 const POPULATE = [
-  { path: 'employee', select: 'fullName code designation' },
+  { path: 'employee', select: 'fullName code designation profilePhoto' },
   { path: 'department', select: 'name code' },
 ];
 
@@ -40,6 +40,7 @@ function presentAdvance(doc) {
       fullName: json.employee.fullName,
       code: json.employee.code,
       designation: json.employee.designation,
+      profilePhoto: json.employee.profilePhoto || null,
     }
     : json.employee;
   const department = json.department && json.department.id

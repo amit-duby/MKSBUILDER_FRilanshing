@@ -16,7 +16,7 @@ const repo = new BaseRepository(Site);
 const SORT_FIELDS = ['name', 'code', 'startDate', 'createdAt', 'status'];
 const POPULATE = [
   { path: 'project', select: 'name status' },
-  { path: 'incharge', select: 'fullName code designation status' },
+  { path: 'incharge', select: 'fullName code designation status profilePhoto' },
 ];
 
 function briefRef(doc, fields) {
@@ -34,7 +34,7 @@ function present(doc, project, incharge) {
   if (project) json.project = briefRef(project, ['name', 'status']);
   if (incharge !== undefined) {
     json.incharge = incharge
-      ? briefRef(incharge, ['fullName', 'code', 'designation', 'status'])
+      ? briefRef(incharge, ['fullName', 'code', 'designation', 'status', 'profilePhoto'])
       : null;
   }
   return json;

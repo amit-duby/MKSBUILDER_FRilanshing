@@ -137,6 +137,7 @@ async function employeeStatement(employeeId, query) {
       fullName: employee.fullName,
       designation: employee.designation,
       status: employee.status,
+      profilePhoto: employee.profilePhoto || null,
       salary: employee.salary,
     },
     salaries: {

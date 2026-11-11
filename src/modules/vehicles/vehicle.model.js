@@ -29,6 +29,7 @@ const vehicleSchema = new mongoose.Schema(
     fuelType: { type: String, enum: FUEL_TYPES, default: 'diesel' },
     status: { type: String, enum: VEHICLE_STATUS, default: 'available', index: true },
     currentAssignment: { type: mongoose.Schema.Types.ObjectId, ref: 'VehicleAssignment' },
+    vehiclePhoto: { type: String, trim: true, default: null },
     odometer: { type: Number, min: 0 },
     documents: {
       insuranceExpiry: Date,

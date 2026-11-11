@@ -75,6 +75,17 @@ module.exports = {
   mark: requestSchema({ body: markBody }),
   update: requestSchema({ params: idParams, body: updateBody }),
   byId: requestSchema({ params: idParams }),
+  byEmployee: requestSchema({
+    params: z.object({
+      employeeId: objectId,
+    }),
+    query: z.object({
+      periodMonth: z.coerce.number().int().min(1).max(12).optional(),
+      periodYear: z.coerce.number().int().min(2000).max(2100).optional(),
+      from: dateValue.optional(),
+      to: dateValue.optional(),
+    }),
+  }),
   bulk: requestSchema({ body: bulkBody }),
   register: requestSchema({
     query: listQuery({

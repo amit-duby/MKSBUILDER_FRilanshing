@@ -18,6 +18,7 @@ const Assignment = require('./assignment.model');
 const Maintenance = require('./maintenance.model');
 const MaintenanceCategory = require('./maintenanceCategory.model');
 const { removeStoredReceipt } = require('../../common/middleware/maintenanceUpload');
+const { removeStoredVehiclePhoto } = require('../../common/middleware/vehicleUpload');
 const Site = require('../sites/site.model');
 const Employee = require('../employees/employee.model');
 const Expense = require('../accounts/expense.model');
@@ -27,12 +28,12 @@ const SORT_FIELDS = ['registrationNumber', 'code', 'status', 'createdAt'];
 const VEHICLE_TYPE_POPULATE = { path: 'vehicleType', select: 'name description status' };
 const ASSIGNMENT_POPULATE = [
   { path: 'site', select: 'name code status' },
-  { path: 'driver', select: 'fullName code designation' },
+  { path: 'driver', select: 'fullName code designation profilePhoto' },
 ];
 const MAINTENANCE_POPULATE = [
   {
     path: 'vehicle',
-    select: 'code registrationNumber vehicleType status make modelName',
+    select: 'code registrationNumber vehicleType status make modelName vehiclePhoto',
     populate: VEHICLE_TYPE_POPULATE,
   },
   { path: 'maintenanceCategory', select: 'name description status' },
@@ -413,6 +414,7 @@ const service = {
       year: body.year,
       fuelType: body.fuelType || 'diesel',
       status: 'available',
+      vehiclePhoto: body.vehiclePhoto || null,
       odometer: body.odometer,
       documents: body.documents || {},
       notes: body.notes || '',
@@ -560,7 +562,7 @@ const service = {
               from: COLLECTIONS.employees,
               localField: 'currentAssignment.driver',
               foreignField: '_id',
-              pipeline: [{ $project: { fullName: 1, code: 1, designation: 1 } }],
+              pipeline: [{ $project: { fullName: 1, code: 1, designation: 1, profilePhoto: 1 } }],
               as: 'driverDocs',
             },
           },
@@ -653,6 +655,15 @@ const service = {
     if (body.registrationNumber) doc.registrationNumber = body.registrationNumber;
     if (vehicleType) doc.vehicleType = vehicleType._id;
     assignDefined(doc, body, ['make', 'modelName', 'year', 'fuelType', 'notes']);
+    if (Object.prototype.hasOwnProperty.call(body, 'vehiclePhoto')) {
+      if (body.vehiclePhoto && body.vehiclePhoto !== doc.vehiclePhoto) {
+        removeStoredVehiclePhoto(doc.vehiclePhoto);
+      }
+      if (body.vehiclePhoto === null && doc.vehiclePhoto) {
+        removeStoredVehiclePhoto(doc.vehiclePhoto);
+      }
+      doc.vehiclePhoto = body.vehiclePhoto || null;
+    }
     if (body.odometer !== undefined) assertOdometer(doc, body.odometer);
     applyDocuments(doc, body.documents);
 
@@ -679,11 +690,13 @@ const service = {
     if (doc.status === 'assigned' || doc.currentAssignment) {
       throw new AppError('Release the vehicle before deleting it', 409, 'CONFLICT');
     }
+    const photo = doc.vehiclePhoto;
     await Promise.all([
       Assignment.deleteMany({ vehicle: doc._id }),
       Maintenance.deleteMany({ vehicle: doc._id }),
     ]);
     await doc.deleteOne();
+    removeStoredVehiclePhoto(photo);
   },
 
   async alerts(query) {
