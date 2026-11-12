@@ -6,8 +6,6 @@ const EMPLOYMENT_TYPES = ['permanent', 'contract', 'daily_wage', 'staff'];
 const EMPLOYEE_STATUS = ['active', 'inactive', 'resigned'];
 const PAY_BASIS = ['monthly', 'daily'];
 const ATTENDANCE_STATUS = ['present', 'absent', 'half_day', 'leave', 'weekly_off', 'holiday'];
-const SALARY_RECORD_STATUS = ['draft', 'recorded'];
-
 const STOCK_LOCATION_TYPES = ['central_store', 'site_store'];
 const MOVEMENT_TYPES = ['receipt', 'issue', 'transfer', 'adjustment', 'return'];
 const MATERIAL_CONDITIONS = ['new', 'old', 'scrap'];
@@ -54,7 +52,6 @@ const COLLECTIONS = {
   vehicleAssignments: 'vehicle_assignments',
   vehicleMaintenance: 'vehicle_maintenance_logs',
   vehicleMaintenanceCategories: 'vehicle_maintenance_categories',
-  salaryRecords: 'salary_records',
   expenses: 'expenses',
   employeeAdvances: 'employee_advances',
   payrollPayments: 'payroll_payments',
@@ -81,7 +78,6 @@ module.exports = {
   EMPLOYEE_STATUS,
   PAY_BASIS,
   ATTENDANCE_STATUS,
-  SALARY_RECORD_STATUS,
   STOCK_LOCATION_TYPES,
   MOVEMENT_TYPES,
   MATERIAL_CONDITIONS,

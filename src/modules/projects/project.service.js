@@ -11,7 +11,7 @@ const {
 const Project = require('./project.model');
 const Site = require('../sites/site.model');
 const Expense = require('../accounts/expense.model');
-const SalaryRecord = require('../accounts/salary.model');
+const PayrollPayment = require('../accounts/payroll.model');
 const VehicleAssignment = require('../vehicles/assignment.model');
 
 const repo = new BaseRepository(Project);
@@ -89,7 +89,8 @@ async function remove(id) {
 }
 
 async function summaryStats(projectId) {
-  const [siteFacet, expenseRows, salaryRows, vehicles] = await Promise.all([
+  const siteIds = await Site.find({ project: projectId }).distinct('_id');
+  const [siteFacet, expenseRows, payrollRows, vehicles] = await Promise.all([
     Site.aggregate([
       { $match: { project: projectId } },
       {
@@ -127,21 +128,21 @@ async function summaryStats(projectId) {
       { $match: { project: projectId, isVoid: false } },
       { $group: { _id: null, total: { $sum: '$amount' } } },
     ]),
-    SalaryRecord.aggregate([
-      { $match: { project: projectId, isVoid: false } },
-      {
-        $group: {
-          _id: null,
-          amountPaid: { $sum: '$amountPaid' },
-          netAmount: { $sum: '$netAmount' },
+    siteIds.length
+      ? PayrollPayment.aggregate([
+        { $match: { site: { $in: siteIds } } },
+        {
+          $group: {
+            _id: null,
+            amountPaid: { $sum: '$netPay' },
+            netAmount: { $sum: '$netPay' },
+          },
         },
-      },
-    ]),
-    Site.find({ project: projectId }).distinct('_id').then((siteIds) => (
-      siteIds.length
-        ? VehicleAssignment.countDocuments({ site: { $in: siteIds }, releasedAt: null })
-        : 0
-    )),
+      ])
+      : Promise.resolve([]),
+    siteIds.length
+      ? VehicleAssignment.countDocuments({ site: { $in: siteIds }, releasedAt: null })
+      : Promise.resolve(0),
   ]);
 
   const facet = siteFacet[0] || { byStatus: [], employees: [] };
@@ -157,8 +158,8 @@ async function summaryStats(projectId) {
     sitesByStatus,
     employeeCount: facet.employees[0] ? facet.employees[0].count : 0,
     expenseTotal: expenseRows[0] ? expenseRows[0].total : 0,
-    salaryPaid: salaryRows[0] ? salaryRows[0].amountPaid : 0,
-    salaryNet: salaryRows[0] ? salaryRows[0].netAmount : 0,
+    salaryPaid: payrollRows[0] ? payrollRows[0].amountPaid : 0,
+    salaryNet: payrollRows[0] ? payrollRows[0].netAmount : 0,
     vehicles,
   };
 }

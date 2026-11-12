@@ -5,7 +5,6 @@ const {
   EMPLOYEE_STATUS,
   PAY_BASIS,
   ATTENDANCE_STATUS,
-  SALARY_RECORD_STATUS,
   STOCK_LOCATION_TYPES,
   MOVEMENT_TYPES,
   MATERIAL_CONDITIONS,
@@ -830,69 +829,6 @@ const schemas = {
     payeeName: { type: 'string', maxLength: 120 },
     paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
   }),
-  SalaryCreate: schemaObject(
-    {
-      employeeId: objectId,
-      projectId: objectId,
-      siteId: objectId,
-      periodMonth: { type: 'integer', minimum: 1, maximum: 12, example: 4 },
-      periodYear: { type: 'integer', minimum: 2000, maximum: 2100, example: 2026 },
-      payBasis: { type: 'string', enum: PAY_BASIS, example: 'monthly' },
-      baseAmount: money,
-      allowances: { type: 'array', maxItems: 20, items: amountLine },
-      deductions: { type: 'array', maxItems: 20, items: amountLine },
-      extras: { type: 'array', maxItems: 20, items: amountLine },
-      amountPaid: money,
-      recordStatus: { type: 'string', enum: SALARY_RECORD_STATUS },
-      remarks: { type: 'string', maxLength: 500 },
-    },
-    ['employeeId', 'periodMonth', 'periodYear', 'baseAmount']
-  ),
-  SalaryUpdate: schemaObject({
-    projectId: { ...objectId, nullable: true },
-    siteId: { ...objectId, nullable: true },
-    periodMonth: { type: 'integer', minimum: 1, maximum: 12 },
-    periodYear: { type: 'integer', minimum: 2000, maximum: 2100 },
-    payBasis: { type: 'string', enum: PAY_BASIS },
-    baseAmount: money,
-    allowances: { type: 'array', maxItems: 20, items: amountLine },
-    deductions: { type: 'array', maxItems: 20, items: amountLine },
-    extras: { type: 'array', maxItems: 20, items: amountLine },
-    amountPaid: money,
-    recordStatus: { type: 'string', enum: SALARY_RECORD_STATUS },
-    remarks: { type: 'string', maxLength: 500 },
-  }),
-  ExpenseCreate: schemaObject(
-    {
-      category: { type: 'string', enum: EXPENSE_CATEGORIES, example: 'vehicle' },
-      amount: positiveMoney,
-      expenseDate: dateString,
-      description: { type: 'string', minLength: 3, maxLength: 500, example: 'Cement purchase' },
-      payeeName: { type: 'string', maxLength: 120 },
-      employeeId: objectId,
-      projectId: objectId,
-      siteId: objectId,
-      vehicleId: objectId,
-      itemId: objectId,
-      referenceNo: { type: 'string', maxLength: 80 },
-      paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES, example: 'bank_transfer' },
-    },
-    ['category', 'amount', 'description']
-  ),
-  ExpenseUpdate: schemaObject({
-    category: { type: 'string', enum: EXPENSE_CATEGORIES },
-    amount: positiveMoney,
-    expenseDate: dateString,
-    description: { type: 'string', minLength: 3, maxLength: 500 },
-    payeeName: { type: 'string', maxLength: 120 },
-    employeeId: objectId,
-    projectId: objectId,
-    siteId: objectId,
-    vehicleId: objectId,
-    itemId: objectId,
-    referenceNo: { type: 'string', maxLength: 80 },
-    paymentModeNote: { type: 'string', enum: PAYMENT_MODE_NOTES },
-  }),
   AdvanceCreate: schemaObject(
     {
       employeeId: objectId,
@@ -958,19 +894,54 @@ const schemas = {
     isPaid: { type: 'boolean', example: false },
     paidAt: { ...dateTimeString, nullable: true },
   }),
+  PayrollMoneyBucket: schemaObject({
+    gross: money,
+    advanceRecovery: money,
+    netPayable: money,
+    netPaid: money,
+    net: money,
+    count: { type: 'integer', example: 3 },
+  }),
+  PayrollSummary: schemaObject({
+    unpaid: {
+      type: 'object',
+      description: 'Pending amounts — decrease when an employee is paid',
+      properties: {
+        gross: money,
+        advanceRecovery: money,
+        netPayable: money,
+        count: { type: 'integer' },
+      },
+    },
+    paid: {
+      type: 'object',
+      description: 'Already paid amounts — increase when an employee is paid',
+      properties: {
+        gross: money,
+        advanceRecovery: money,
+        netPaid: money,
+        count: { type: 'integer' },
+      },
+    },
+    total: {
+      type: 'object',
+      properties: {
+        gross: money,
+        advanceRecovery: money,
+        net: money,
+        count: { type: 'integer' },
+      },
+    },
+    gross: money,
+    advanceRecovery: money,
+    netPayable: money,
+  }),
   PayrollSheet: schemaObject({
     periodMonth: { type: 'integer', example: 11 },
     periodYear: { type: 'integer', example: 2026 },
     workingDaysInMonth: { type: 'integer', example: 26 },
     payBasis: { type: 'string', enum: PAY_BASIS, nullable: true, example: 'monthly' },
-    summary: {
-      type: 'object',
-      properties: {
-        gross: money,
-        advanceRecovery: money,
-        netPayable: money,
-      },
-    },
+    summary: namedRef('PayrollSummary'),
     items: { type: 'array', items: namedRef('PayrollRow') },
   }),
   PayrollPay: schemaObject(
@@ -986,6 +957,7 @@ const schemas = {
     periodMonth: { type: 'integer', example: 11 },
     periodYear: { type: 'integer', example: 2026 },
     item: namedRef('PayrollRow'),
+    summary: namedRef('PayrollSummary'),
   }),
   PayrollAdvanceMonth: schemaObject({
     periodMonth: { type: 'integer', example: 11 },
@@ -1447,33 +1419,6 @@ const schemas = {
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
-  SalaryRecord: modelSchema({
-    id: objectId,
-    code: { type: 'string' },
-    employee: { type: 'object' },
-    project: namedRef('NamedRef'),
-    site: namedRef('NamedRef'),
-    periodMonth: { type: 'integer' },
-    periodYear: { type: 'integer' },
-    payBasis: { type: 'string', enum: PAY_BASIS },
-    baseAmount: money,
-    allowances: { type: 'array', items: amountLine },
-    deductions: { type: 'array', items: amountLine },
-    extras: { type: 'array', items: amountLine },
-    grossAmount: money,
-    totalDeductions: money,
-    totalExtras: money,
-    netAmount: money,
-    amountPaid: money,
-    balanceAmount: { type: 'number' },
-    outstandingAmount: money,
-    overpaidAmount: money,
-    recordStatus: { type: 'string', enum: SALARY_RECORD_STATUS },
-    remarks: { type: 'string' },
-    isVoid: { type: 'boolean' },
-    createdAt: dateTimeString,
-    updatedAt: dateTimeString,
-  }),
   AuthUser: modelSchema({
     id: objectId,
     name: { type: 'string' },
@@ -1484,6 +1429,38 @@ const schemas = {
   AuthSession: modelSchema({
     token: { type: 'string' },
     user: namedRef('AuthUser'),
+  }),
+  DashboardOverview: schemaObject({
+    currency: { type: 'string', example: 'INR' },
+    kpis: {
+      type: 'object',
+      properties: {
+        totalActiveEmployees: { type: 'integer' },
+        totalPresent: { type: 'integer' },
+        totalStaffSalaryPaidThisMonth: money,
+        totalStaffPaidCountThisMonth: { type: 'integer' },
+        totalOutstandingAdvances: money,
+        totalProjects: { type: 'integer' },
+        totalWorkingSites: { type: 'integer' },
+        totalVehicles: { type: 'integer' },
+        totalCompanyProjects: { type: 'integer' },
+        totalStoreMaterials: { type: 'integer' },
+        totalStockValues: money,
+        impressOutstanding: { type: 'integer' },
+        totalVehicleSpend: money,
+      },
+    },
+    impress: { type: 'object' },
+    payLast6Months: { type: 'array', items: { type: 'object' } },
+    attendanceLast14Days: { type: 'array', items: { type: 'object' } },
+    spendThisMonth: { type: 'object' },
+    projectStatus: { type: 'object' },
+    fleetStatus: { type: 'object' },
+    storeMovementLast6Months: { type: 'array', items: { type: 'object' } },
+    stockByCategory: { type: 'array', items: { type: 'object' } },
+    lowStockAlerts: { type: 'array', items: { type: 'object' } },
+    recentPayments: { type: 'array', items: { type: 'object' } },
+    headcountByDepartment: { type: 'array', items: { type: 'object' } },
   }),
   Attendance: modelSchema({
     id: objectId,
@@ -1725,7 +1702,7 @@ const spec = {
     title: 'MKS Construction ERP API',
     version: '1.0.0',
     description:
-      'Projects, people, stock, vehicles, attendance, and salary/expense records. Amounts are INR. Accounts record ledgers and do not transfer money. Request bodies below list every accepted JSON field.',
+      'Projects, people, stock, vehicles, attendance, payroll and expense records. Amounts are INR. Accounts record ledgers and do not transfer money. Request bodies below list every accepted JSON field.',
   },
   servers: [{ url: '/api/v1' }],
   tags: [
@@ -1814,7 +1791,9 @@ const spec = {
       }),
     },
     '/dashboard': {
-      get: operation('Dashboard', 'Owner overview'),
+      get: operation('Dashboard', 'Owner overview with KPIs, spend, attendance, fleet, stock and payments', {
+        data: 'DashboardOverview',
+      }),
     },
     '/departments': {
       get: operation('Departments', 'List departments', { parameters: paging, data: 'Department', list: true }),
@@ -2433,86 +2412,13 @@ const spec = {
       }),
     },
     '/accounts/summary': {
-      get: operation('Accounts', 'Salary and expense totals', {
+      get: operation('Accounts', 'Payroll and expense totals', {
         parameters: [query('from', dateString), query('to', dateString), query('projectId', objectId)],
       }),
     },
     '/accounts/employees/{employeeId}/statement': {
-      get: operation('Accounts', 'Employee ledger statement', { parameters: [pathParam('employeeId')] }),
-    },
-    '/accounts/salaries': {
-      get: operation('Accounts', 'List salary records', {
-        parameters: paging,
-        data: 'SalaryRecord',
-        list: true,
-      }),
-      post: operation('Accounts', 'Record a salary sheet', {
-        status: '201',
-        data: 'SalaryRecord',
-        body: jsonBody(ref('SalaryCreate'), {
-          employeeId: '64b0c0c0c0c0c0c0c0c0c0c0',
-          periodMonth: 4,
-          periodYear: 2026,
-          payBasis: 'monthly',
-          baseAmount: 25000,
-          amountPaid: 25000,
-        }),
-      }),
-    },
-    '/accounts/salaries/{id}': {
-      get: operation('Accounts', 'Get a salary record', { parameters: [pathParam()], data: 'SalaryRecord' }),
-      patch: operation('Accounts', 'Update a salary record', {
-        parameters: [pathParam()],
-        data: 'SalaryRecord',
-        body: jsonBody(ref('SalaryUpdate'), { amountPaid: 20000 }),
-      }),
-    },
-    '/accounts/salaries/{id}/void': {
-      post: operation('Accounts', 'Void a salary record', {
-        parameters: [pathParam()],
-        data: 'SalaryRecord',
-        body: jsonBody(ref('VoidBody'), { reason: 'Entered for the wrong month' }),
-      }),
-    },
-    '/accounts/expenses': {
-      get: operation('Accounts', 'List expenses', {
-        parameters: [
-          ...paging,
-          query('category', { type: 'string', enum: EXPENSE_CATEGORIES }),
-          query('vehicleId', objectId),
-          query('employeeId', objectId),
-          query('projectId', objectId),
-          query('siteId', objectId),
-          query('from', dateString),
-          query('to', dateString),
-        ],
-        data: 'Expense',
-        list: true,
-      }),
-      post: operation('Accounts', 'Record an expense', {
-        status: '201',
-        data: 'Expense',
-        body: jsonBody(ref('ExpenseCreate'), {
-          category: 'material',
-          amount: 38000,
-          description: 'Cement purchase',
-          paymentModeNote: 'bank_transfer',
-        }),
-      }),
-    },
-    '/accounts/expenses/{id}': {
-      get: operation('Accounts', 'Get an expense', { parameters: [pathParam()], data: 'Expense' }),
-      patch: operation('Accounts', 'Update an expense', {
-        parameters: [pathParam()],
-        data: 'Expense',
-        body: jsonBody(ref('ExpenseUpdate'), { amount: 40000 }),
-      }),
-    },
-    '/accounts/expenses/{id}/void': {
-      post: operation('Accounts', 'Void an expense', {
-        parameters: [pathParam()],
-        data: 'Expense',
-        body: jsonBody(ref('VoidBody'), { reason: 'Duplicate entry removed' }),
+      get: operation('Accounts', 'Employee ledger statement (payroll + expenses)', {
+        parameters: [pathParam('employeeId')],
       }),
     },
     '/accounts/advances': {

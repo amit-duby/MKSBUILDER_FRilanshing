@@ -5,7 +5,7 @@ function duplicateMessage(error) {
     return 'Attendance is already marked for this employee on this date';
   }
   if (keys.includes('periodMonth') || keys.includes('periodYear')) {
-    return 'A salary record already exists for this employee and month';
+    return 'This employee is already paid for the selected period';
   }
   if (keys.includes('registrationNumber')) {
     return 'A vehicle with this registration number already exists';

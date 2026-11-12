@@ -2,15 +2,15 @@ const mongoose = require('mongoose');
 const { CURRENCY } = require('../../config/constants');
 const requireDoc = require('../../common/utils/requireDoc');
 const { resolveRange } = require('../../common/utils/helpers');
+const { roundMoney } = require('../../common/utils/money');
 const Employee = require('../employees/employee.model');
-const SalaryRecord = require('./salary.model');
 const Expense = require('./expense.model');
+const PayrollPayment = require('./payroll.model');
 
 const LINE_LIMIT = 300;
 
-function salaryRangeMatch(range, extra = {}) {
+function payrollRangeMatch(range, extra = {}) {
   return {
-    isVoid: false,
     ...extra,
     $expr: {
       $let: {
@@ -30,19 +30,17 @@ function salaryRangeMatch(range, extra = {}) {
   };
 }
 
-async function salaryTotals(match) {
-  const [row] = await SalaryRecord.aggregate([
+async function payrollTotals(match) {
+  const [row] = await PayrollPayment.aggregate([
     { $match: match },
     {
       $group: {
         _id: null,
         count: { $sum: 1 },
-        grossAmount: { $sum: '$grossAmount' },
-        totalExtras: { $sum: '$totalExtras' },
-        netAmount: { $sum: '$netAmount' },
-        amountPaid: { $sum: '$amountPaid' },
-        outstandingAmount: { $sum: '$outstandingAmount' },
-        overpaidAmount: { $sum: '$overpaidAmount' },
+        basic: { $sum: '$basic' },
+        extraShifts: { $sum: '$extraShifts' },
+        advanceRecovery: { $sum: '$advanceRecovery' },
+        netPay: { $sum: '$netPay' },
       },
     },
   ]);
@@ -50,17 +48,22 @@ async function salaryTotals(match) {
   if (!row) {
     return {
       count: 0,
-      grossAmount: 0,
-      totalExtras: 0,
-      netAmount: 0,
+      basic: 0,
+      extraShifts: 0,
+      advanceRecovery: 0,
+      netPay: 0,
       amountPaid: 0,
-      outstandingAmount: 0,
-      overpaidAmount: 0,
     };
   }
 
-  delete row._id;
-  return row;
+  return {
+    count: row.count,
+    basic: roundMoney(row.basic || 0),
+    extraShifts: roundMoney(row.extraShifts || 0),
+    advanceRecovery: roundMoney(row.advanceRecovery || 0),
+    netPay: roundMoney(row.netPay || 0),
+    amountPaid: roundMoney(row.netPay || 0),
+  };
 }
 
 async function expenseTotals(match) {
@@ -83,25 +86,24 @@ async function expenseTotals(match) {
 
 async function summary(query) {
   const range = resolveRange(query, 1);
-  const salaryExtra = {};
+  const payrollExtra = {};
   const expenseExtra = { isVoid: false, expenseDate: { $gte: range.from, $lte: range.to } };
   if (query.projectId) {
     const projectId = new mongoose.Types.ObjectId(query.projectId);
-    salaryExtra.project = projectId;
     expenseExtra.project = projectId;
   }
 
-  const [salaries, expenses] = await Promise.all([
-    salaryTotals(salaryRangeMatch(range, salaryExtra)),
+  const [payroll, expenses] = await Promise.all([
+    payrollTotals(payrollRangeMatch(range, payrollExtra)),
     expenseTotals(expenseExtra),
   ]);
 
   return {
     currency: CURRENCY,
     range,
-    salaries,
+    payroll,
     expenses,
-    recordedOutflow: salaries.amountPaid + expenses.totalAmount,
+    recordedOutflow: roundMoney(payroll.amountPaid + expenses.totalAmount),
   };
 }
 
@@ -112,21 +114,22 @@ function categoryTotal(expenses, category) {
 async function employeeStatement(employeeId, query) {
   const employee = await requireDoc(Employee, employeeId, 'Employee');
   const range = resolveRange(query, 12);
-  const salaryMatch = salaryRangeMatch(range, { employee: employee._id });
+  const payrollMatch = payrollRangeMatch(range, { employee: employee._id });
   const expenseMatch = {
     isVoid: false,
     employee: employee._id,
     expenseDate: { $gte: range.from, $lte: range.to },
   };
 
-  const [salaries, expenses, salaryLines, expenseLines] = await Promise.all([
-    salaryTotals(salaryMatch),
+  const [payroll, expenses, payrollLines, expenseLines] = await Promise.all([
+    payrollTotals(payrollMatch),
     expenseTotals(expenseMatch),
-    SalaryRecord.find(salaryMatch).sort({ periodYear: -1, periodMonth: -1 }).limit(LINE_LIMIT),
+    PayrollPayment.find(payrollMatch)
+      .sort({ periodYear: -1, periodMonth: -1 })
+      .limit(LINE_LIMIT)
+      .lean(),
     Expense.find(expenseMatch).sort({ expenseDate: -1 }).limit(LINE_LIMIT),
   ]);
-
-  const extraPaid = salaries.totalExtras + categoryTotal(expenses, 'employee_extra');
 
   return {
     currency: CURRENCY,
@@ -140,10 +143,10 @@ async function employeeStatement(employeeId, query) {
       profilePhoto: employee.profilePhoto || null,
       salary: employee.salary,
     },
-    salaries: {
-      ...salaries,
-      lines: salaryLines,
-      linesTruncated: salaries.count > salaryLines.length,
+    payroll: {
+      ...payroll,
+      lines: payrollLines,
+      linesTruncated: payroll.count > payrollLines.length,
     },
     expenses: {
       ...expenses,
@@ -151,16 +154,15 @@ async function employeeStatement(employeeId, query) {
       linesTruncated: expenses.count > expenseLines.length,
     },
     totals: {
-      extraPaid,
       advancesGiven: categoryTotal(expenses, 'employee_advance'),
       reimbursements: categoryTotal(expenses, 'employee_reimbursement'),
-      amountPaidOnSalarySheets: salaries.amountPaid,
-      salaryOutstanding: salaries.outstandingAmount,
-      salaryOverpaid: salaries.overpaidAmount,
-      recordedOutflow: salaries.amountPaid
+      payrollPaid: payroll.amountPaid,
+      recordedOutflow: roundMoney(
+        payroll.amountPaid
         + categoryTotal(expenses, 'employee_advance')
         + categoryTotal(expenses, 'employee_extra')
-        + categoryTotal(expenses, 'employee_reimbursement'),
+        + categoryTotal(expenses, 'employee_reimbursement')
+      ),
     },
   };
 }

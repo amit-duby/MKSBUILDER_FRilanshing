@@ -1,3 +1,5 @@
+// Internal expense ledger used by vehicles/maintenance, dashboard, statement, and projects.
+// Not exposed as /accounts/expenses HTTP routes.
 const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const requireDoc = require('../../common/utils/requireDoc');

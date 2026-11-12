@@ -131,13 +131,53 @@ function presentPayrollRow(row) {
   };
 }
 
+function emptyMoneyBucket() {
+  return { gross: 0, advanceRecovery: 0, net: 0, count: 0 };
+}
+
+function addRowToBucket(bucket, row) {
+  bucket.gross = roundMoney(bucket.gross + row.basic + row.extraShifts);
+  bucket.advanceRecovery = roundMoney(bucket.advanceRecovery + row.advance);
+  bucket.net = roundMoney(bucket.net + row.netPay);
+  bucket.count += 1;
+}
+
 function summarize(items) {
-  return items.reduce((acc, row) => {
-    acc.gross = roundMoney(acc.gross + row.basic + row.extraShifts);
-    acc.advanceRecovery = roundMoney(acc.advanceRecovery + row.advance);
-    acc.netPayable = roundMoney(acc.netPayable + row.netPay);
-    return acc;
-  }, { gross: 0, advanceRecovery: 0, netPayable: 0 });
+  const unpaid = emptyMoneyBucket();
+  const paid = emptyMoneyBucket();
+
+  for (const row of items) {
+    if (row.isPaid) addRowToBucket(paid, row);
+    else addRowToBucket(unpaid, row);
+  }
+
+  return {
+    // Pending sheet — decreases as employees are paid.
+    unpaid: {
+      gross: unpaid.gross,
+      advanceRecovery: unpaid.advanceRecovery,
+      netPayable: unpaid.net,
+      count: unpaid.count,
+    },
+    // Already paid — increases as employees are paid.
+    paid: {
+      gross: paid.gross,
+      advanceRecovery: paid.advanceRecovery,
+      netPaid: paid.net,
+      count: paid.count,
+    },
+    // Full month totals (paid + unpaid).
+    total: {
+      gross: roundMoney(unpaid.gross + paid.gross),
+      advanceRecovery: roundMoney(unpaid.advanceRecovery + paid.advanceRecovery),
+      net: roundMoney(unpaid.net + paid.net),
+      count: unpaid.count + paid.count,
+    },
+    // Backward-compatible aliases = unpaid pending amounts.
+    gross: unpaid.gross,
+    advanceRecovery: unpaid.advanceRecovery,
+    netPayable: unpaid.net,
+  };
 }
 
 async function loadSiteByEmployee(employeeIds, siteId) {
@@ -681,24 +721,33 @@ async function pay(body, user) {
     throw new AppError('This employee is already paid for the selected period', 409, 'CONFLICT');
   }
 
-  const refreshed = await buildSheet({
-    periodMonth,
-    periodYear,
-    employeeId,
-    page: 1,
-    limit: 1,
-  });
+  const [refreshedRow, periodSheet] = await Promise.all([
+    buildSheet({
+      periodMonth,
+      periodYear,
+      employeeId,
+      page: 1,
+      limit: 1,
+    }),
+    buildSheet({
+      periodMonth,
+      periodYear,
+      page: 1,
+      limit: 1,
+    }),
+  ]);
 
   return {
     paymentId: String(payment._id),
     periodMonth,
     periodYear,
-    item: refreshed.items[0] || {
+    item: refreshedRow.items[0] || {
       ...row,
       isPaid: true,
       paidAt: payment.paidAt,
       advance: row.advance,
     },
+    summary: periodSheet.summary,
   };
 }
 
