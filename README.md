@@ -32,7 +32,7 @@ npm install
 npm run dev
 ```
 
-Set `JWT_SECRET` to at least 32 characters. The API does not create a user from `.env`. Create the first admin with `POST /api/v1/auth/register`, then log in with that same email and password. After the first account exists, only an admin can register another account.
+Set `JWT_SECRET` and `JWT_REFRESH_SECRET` to different values of at least 32 characters each. The API does not create a user from `.env`. Create the first admin with `POST /api/v1/auth/register`, then log in with that same email and password. After the first account exists, only an admin can register another account.
 
 ```bash
 npm test
@@ -129,8 +129,8 @@ Business numbers that must stay stable (salary totals, stock plans) live in plai
 ## Production notes
 
 - Put the API behind HTTPS.
-- Set `NODE_ENV=production`, a long `JWT_SECRET`, a real admin password, and an explicit `CORS_ORIGIN`.
+- Set `NODE_ENV=production`, long distinct `JWT_SECRET` / `JWT_REFRESH_SECRET`, a real admin password, and an explicit `CORS_ORIGIN`.
 - Set `TRUST_PROXY=true` when a reverse proxy terminates TLS.
-- Tokens last `JWT_EXPIRES_IN` (default 8 hours). Logout bumps the token version and signs every current token out.
+- Access tokens last `JWT_EXPIRES_IN` (default 8 hours). Refresh tokens last `JWT_REFRESH_EXPIRES_IN` (default 7 days); use `POST /api/v1/auth/refresh`. Logout bumps the token version, clears the stored refresh token, and signs every current session out.
 - Login is limited to 20 attempts per 15 minutes. The rest of the API allows 1000 requests per 15 minutes.
 - The image in `Dockerfile` expects `MONGODB_URI` and the other variables at runtime. `docker compose up -d` starts only MongoDB.

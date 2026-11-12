@@ -20,6 +20,12 @@ const login = requestSchema({
   body: z.object(credentials),
 });
 
+const refresh = requestSchema({
+  body: z.object({
+    refreshToken: z.string().trim().min(20).max(2048),
+  }),
+});
+
 const forgotPassword = requestSchema({
   body: z.object({
     email: z.string().trim().email(),
@@ -66,4 +72,4 @@ const profile = requestSchema({
   }),
 });
 
-module.exports = { register, login, forgotPassword, resetPassword, changePassword, profile };
+module.exports = { register, login, refresh, forgotPassword, resetPassword, changePassword, profile };

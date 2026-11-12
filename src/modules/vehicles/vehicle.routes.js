@@ -14,6 +14,7 @@ router.use('/maintenance-categories', maintenanceCategoryRoutes);
 router.get('/alerts', validate(schema.alerts), controller.alerts);
 router.get('/assignments', validate(schema.listAllAssignments), controller.listAllAssignments);
 router.get('/maintenance', validate(schema.listAllMaintenance), controller.listAllMaintenance);
+router.get('/maintenance/:id', validate(schema.byId), controller.getMaintenance);
 router.post(
   '/maintenance/create',
   maintenanceUpload,

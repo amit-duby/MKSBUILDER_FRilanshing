@@ -14,6 +14,8 @@ const schema = z.object({
   MONGODB_URI: z.string().min(1, 'MONGODB_URI is required'),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   JWT_EXPIRES_IN: z.string().min(1).default('8h'),
+  JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+  JWT_REFRESH_EXPIRES_IN: z.string().min(1).default('7d'),
   CORS_ORIGIN: z.string().min(1).default('*'),
   LOG_LEVEL: z.string().min(1).default('info'),
   TRUST_PROXY: z.enum(['true', 'false']).default('false'),

@@ -1035,6 +1035,12 @@ const service = {
     return this.listAllMaintenance({ ...query, vehicleId: id });
   },
 
+  async getMaintenance(id) {
+    const log = await Maintenance.findById(id).populate(MAINTENANCE_POPULATE);
+    if (!log) throw new AppError('Maintenance log not found', 404, 'NOT_FOUND');
+    return presentMaintenance(log);
+  },
+
   async updateMaintenance(id, body, user) {
     const log = await Maintenance.findById(id);
     if (!log) throw new AppError('Maintenance log not found', 404, 'NOT_FOUND');

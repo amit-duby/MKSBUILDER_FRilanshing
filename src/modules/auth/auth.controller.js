@@ -12,6 +12,11 @@ const login = asyncHandler(async (req, res) => {
   return ok(res, data, 'Logged in');
 });
 
+const refresh = asyncHandler(async (req, res) => {
+  const data = await authService.refresh(req.body);
+  return ok(res, data, 'Token refreshed');
+});
+
 const me = asyncHandler(async (req, res) => {
   const data = await authService.me(req.user.id);
   return ok(res, data, 'Profile fetched');
@@ -42,4 +47,4 @@ const changePassword = asyncHandler(async (req, res) => {
   return ok(res, data, 'Password changed');
 });
 
-module.exports = { register, login, me, updateAvatar, logout, forgotPassword, resetPassword, changePassword };
+module.exports = { register, login, refresh, me, updateAvatar, logout, forgotPassword, resetPassword, changePassword };

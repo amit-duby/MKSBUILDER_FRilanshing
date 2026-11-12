@@ -301,6 +301,12 @@ const schemas = {
     },
     ['password', 'confirmPassword']
   ),
+  RefreshBody: schemaObject(
+    {
+      refreshToken: { type: 'string', minLength: 20, maxLength: 2048, example: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...' },
+    },
+    ['refreshToken']
+  ),
   ChangePasswordBody: schemaObject(
     {
       currentPassword: { type: 'string', minLength: 8, maxLength: 128, example: 'ChangeMe123!' },
@@ -712,7 +718,7 @@ const schemas = {
       fuelType: { type: 'string', enum: FUEL_TYPES },
       vehiclePhoto: { type: 'string', format: 'binary' },
       odometer: { type: 'number', minimum: 0 },
-      documents: { type: 'string', description: 'JSON string of document expiry dates' },
+      documents: { type: 'string', description: 'Optional JSON string of document expiry dates' },
       notes: { type: 'string', maxLength: 1000 },
     },
     ['registrationNumber', 'vehicleTypeId']
@@ -740,7 +746,7 @@ const schemas = {
     status: { type: 'string', enum: ['available', 'inactive'] },
     vehiclePhoto: { type: 'string', format: 'binary' },
     odometer: { type: 'number', minimum: 0 },
-    documents: { type: 'string', description: 'JSON string of document expiry dates' },
+    documents: { type: 'string', description: 'Optional JSON string of document expiry dates' },
     notes: { type: 'string', maxLength: 1000 },
   }),
   VehicleAssign: schemaObject(
@@ -1428,6 +1434,7 @@ const schemas = {
   }),
   AuthSession: modelSchema({
     token: { type: 'string' },
+    refreshToken: { type: 'string' },
     user: namedRef('AuthUser'),
   }),
   DashboardOverview: schemaObject({
@@ -1751,6 +1758,15 @@ const spec = {
         body: jsonBody(ref('LoginBody'), {
           email: 'owner@mksbuilder.local',
           password: 'ChangeMe123!',
+        }),
+      }),
+    },
+    '/auth/refresh': {
+      post: operation('Auth', 'Refresh access and refresh tokens', {
+        auth: false,
+        data: 'AuthSession',
+        body: jsonBody(ref('RefreshBody'), {
+          refreshToken: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...',
         }),
       }),
     },
@@ -2323,6 +2339,12 @@ const spec = {
         ],
         data: 'Maintenance',
         list: true,
+      }),
+    },
+    '/vehicles/maintenance/{id}': {
+      get: operation('Vehicles', 'Get a maintenance log', {
+        parameters: [pathParam()],
+        data: 'Maintenance',
       }),
     },
     '/vehicles/maintenance/create': {

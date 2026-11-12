@@ -57,6 +57,11 @@ const listMaintenance = asyncHandler(async (req, res) => {
   }, 'Maintenance logs fetched', result.meta);
 });
 
+const getMaintenance = asyncHandler(async (req, res) => {
+  const data = await service.getMaintenance(req.params.id);
+  return ok(res, data, 'Maintenance log fetched');
+});
+
 const updateMaintenance = asyncHandler(async (req, res) => {
   const data = await service.updateMaintenance(req.params.id, req.body, req.user);
   return ok(res, data, 'Maintenance updated');
@@ -77,6 +82,7 @@ module.exports = {
   addMaintenance,
   listAllMaintenance,
   listMaintenance,
+  getMaintenance,
   updateMaintenance,
   removeMaintenance,
 };

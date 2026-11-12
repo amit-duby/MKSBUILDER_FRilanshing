@@ -16,6 +16,7 @@ const optionalAuthenticate = asyncHandler(async (req, res, next) => {
 
 router.post('/register', loginLimiter, optionalAuthenticate, validate(schema.register), controller.register);
 router.post('/login', loginLimiter, validate(schema.login), controller.login);
+router.post('/refresh', loginLimiter, validate(schema.refresh), controller.refresh);
 router.post('/forgot-password', loginLimiter, validate(schema.forgotPassword), controller.forgotPassword);
 router.post('/reset-password/:token', loginLimiter, validate(schema.resetPassword), controller.resetPassword);
 router.get('/me', asyncHandler(authenticate), controller.me);

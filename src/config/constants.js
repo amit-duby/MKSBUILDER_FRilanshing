@@ -37,6 +37,13 @@ const EMPLOYEE_EXPENSE_CATEGORIES = [
 
 const PAYMENT_MODE_NOTES = ['cash', 'bank_transfer', 'upi', 'cheque', 'other'];
 
+const DOCUMENT_EXPIRY_FIELDS = [
+  'insuranceExpiry',
+  'fitnessExpiry',
+  'permitExpiry',
+  'pollutionExpiry',
+];
+
 const COLLECTIONS = {
   users: 'users',
   departments: 'departments',
@@ -62,13 +69,6 @@ const COLLECTIONS = {
   attendance: 'attendance_records',
   counters: 'counters',
 };
-
-const DOCUMENT_EXPIRY_FIELDS = [
-  'insuranceExpiry',
-  'fitnessExpiry',
-  'permitExpiry',
-  'pollutionExpiry',
-];
 
 module.exports = {
   CURRENCY,

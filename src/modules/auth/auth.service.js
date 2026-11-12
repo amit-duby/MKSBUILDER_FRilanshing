@@ -18,6 +18,7 @@ const { setAuthUser, invalidateAuthUser } = require('../../common/utils/authUser
 const BCRYPT_ROUNDS = 8;
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
 const LOGIN_SELECT = '+passwordHash +tokenVersion name email role avatar isActive';
+const REFRESH_SELECT = '+tokenVersion +refreshToken +refreshTokenExpiresAt name email role avatar isActive';
 
 function schedulePasswordRehash(userId, password, currentHash) {
   let rounds;
@@ -42,8 +43,12 @@ function escapeHtml(value) {
     .replace(/"/g, '&quot;');
 }
 
-function hashResetToken(token) {
+function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
+}
+
+function hashResetToken(token) {
+  return hashToken(token);
 }
 
 function signToken(user) {
@@ -59,6 +64,60 @@ function signToken(user) {
     config.JWT_SECRET,
     { expiresIn: config.JWT_EXPIRES_IN }
   );
+}
+
+function signRefreshToken(user) {
+  const config = getConfig();
+  return jwt.sign(
+    {
+      sub: user.id,
+      tv: user.tokenVersion,
+      type: 'refresh',
+    },
+    config.JWT_REFRESH_SECRET,
+    { expiresIn: config.JWT_REFRESH_EXPIRES_IN }
+  );
+}
+
+function refreshExpiresAt(refreshToken) {
+  const decoded = jwt.decode(refreshToken);
+  if (!decoded?.exp) return null;
+  return new Date(decoded.exp * 1000);
+}
+
+async function persistRefreshToken(userId, refreshToken) {
+  await User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        refreshToken: hashToken(refreshToken),
+        refreshTokenExpiresAt: refreshExpiresAt(refreshToken),
+      },
+    }
+  );
+}
+
+async function clearRefreshToken(userId) {
+  await User.updateOne(
+    { _id: userId },
+    {
+      $set: {
+        refreshToken: null,
+        refreshTokenExpiresAt: null,
+      },
+    }
+  );
+}
+
+async function issueSession(user) {
+  const token = signToken(user);
+  const refreshToken = signRefreshToken(user);
+  await persistRefreshToken(user.id, refreshToken);
+  return {
+    token,
+    refreshToken,
+    user: publicUser(user),
+  };
 }
 
 function publicUser(user) {
@@ -109,11 +168,7 @@ async function register(body, actor) {
     });
 
     setAuthUser(user.id, user);
-
-    return {
-      token: signToken(user),
-      user: publicUser(user),
-    };
+    return issueSession(user);
   } catch (error) {
     if (error.code === 11000) {
       throw new AppError('This email is already in use', 409, 'CONFLICT');
@@ -152,10 +207,48 @@ async function login(body) {
   schedulePasswordRehash(authUser.id, body.password, user.passwordHash);
   setAuthUser(authUser.id, authUser);
 
-  return {
-    token: signToken(authUser),
-    user: publicUser(authUser),
-  };
+  return issueSession(authUser);
+}
+
+async function refresh(body) {
+  const rawRefreshToken = String(body.refreshToken || '').trim();
+  if (!rawRefreshToken) {
+    throw new AppError('Refresh token is required', 401, 'UNAUTHORIZED');
+  }
+
+  let payload;
+  try {
+    payload = jwt.verify(rawRefreshToken, getConfig().JWT_REFRESH_SECRET);
+  } catch {
+    throw new AppError('Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+  }
+
+  if (payload.type !== 'refresh' || !payload.sub) {
+    throw new AppError('Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+  }
+
+  const user = await User.findById(payload.sub).select(REFRESH_SELECT);
+  if (!user || !user.isActive) {
+    throw new AppError('Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+  }
+  assertAdmin(user);
+
+  if (Number(user.tokenVersion) !== Number(payload.tv)) {
+    throw new AppError('Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+  }
+
+  if (
+    !user.refreshToken
+    || user.refreshToken !== hashToken(rawRefreshToken)
+    || !user.refreshTokenExpiresAt
+    || user.refreshTokenExpiresAt.getTime() <= Date.now()
+  ) {
+    await clearRefreshToken(user.id);
+    throw new AppError('Invalid or expired refresh token', 401, 'UNAUTHORIZED');
+  }
+
+  setAuthUser(user.id, user);
+  return issueSession(user);
 }
 
 async function updateAvatar(userId, file) {
@@ -189,7 +282,16 @@ async function me(userId) {
 }
 
 async function logout(userId) {
-  await User.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } });
+  await User.updateOne(
+    { _id: userId },
+    {
+      $inc: { tokenVersion: 1 },
+      $set: {
+        refreshToken: null,
+        refreshTokenExpiresAt: null,
+      },
+    }
+  );
   invalidateAuthUser(userId);
 }
 
@@ -269,13 +371,12 @@ async function resetPassword(token, body) {
   user.tokenVersion += 1;
   user.passwordResetTokenHash = undefined;
   user.passwordResetExpiresAt = undefined;
+  user.refreshToken = null;
+  user.refreshTokenExpiresAt = null;
   await user.save();
   setAuthUser(user.id, user);
 
-  return {
-    token: signToken(user),
-    user: publicUser(user),
-  };
+  return issueSession(user);
 }
 
 async function changePassword(userId, body) {
@@ -283,7 +384,7 @@ async function changePassword(userId, body) {
     throw new AppError('Confirm password must match the new password', 400, 'BAD_REQUEST');
   }
 
-  const user = await User.findById(userId).select('+passwordHash +tokenVersion');
+  const user = await User.findById(userId).select('+passwordHash +tokenVersion +refreshToken +refreshTokenExpiresAt');
   if (!user || !user.isActive) {
     throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
   }
@@ -306,21 +407,21 @@ async function changePassword(userId, body) {
       $set: {
         passwordHash: await bcrypt.hash(body.newPassword, BCRYPT_ROUNDS),
         tokenVersion: nextVersion,
+        refreshToken: null,
+        refreshTokenExpiresAt: null,
       },
     }
   );
   user.tokenVersion = nextVersion;
   setAuthUser(user.id, user);
 
-  return {
-    token: signToken(user),
-    user: publicUser(user),
-  };
+  return issueSession(user);
 }
 
 module.exports = {
   register,
   login,
+  refresh,
   me,
   updateAvatar,
   logout,

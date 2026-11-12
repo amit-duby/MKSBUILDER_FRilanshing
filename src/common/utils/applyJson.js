@@ -7,6 +7,10 @@ function applyJson(schema) {
       delete ret._id;
       delete ret.passwordHash;
       delete ret.tokenVersion;
+      delete ret.refreshToken;
+      delete ret.refreshTokenExpiresAt;
+      delete ret.passwordResetTokenHash;
+      delete ret.passwordResetExpiresAt;
       return ret;
     },
   });

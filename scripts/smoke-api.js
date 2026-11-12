@@ -2,6 +2,8 @@ process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/mks_erp_smoke';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'smoke-test-secret-key-at-least-32-characters';
 process.env.JWT_EXPIRES_IN = '1h';
+process.env.JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'smoke-test-refresh-secret-key-at-least-32';
+process.env.JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
 process.env.CORS_ORIGIN = '*';
 process.env.LOG_LEVEL = 'silent';
 
