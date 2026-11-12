@@ -131,6 +131,7 @@ function publicEmployee(employee) {
     id: employee.id,
     code: employee.code,
     fullName: employee.fullName,
+    joiningDate: employee.joiningDate,
     designation: employee.designation,
     status: employee.status,
     department: employee.department,
