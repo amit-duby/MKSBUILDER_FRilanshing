@@ -15,6 +15,7 @@ const accountRoutes = require('../modules/accounts/account.routes');
 const impressAmountRoutes = require('../modules/ImpressAmount/impressAmount.routes');
 const localAmountRoutes = require('../modules/localAmount/localAmount.routes');
 const gallaryRoutes = require('../modules/gallary/gallary.routes');
+const contactUsRoutes = require('../modules/contactus/contactus.routes');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
 
 const router = express.Router();
@@ -49,5 +50,6 @@ router.use('/accounts', accountRoutes);
 router.use('/impress-amounts', impressAmountRoutes);
 router.use('/local-amounts', localAmountRoutes);
 router.use('/gallary', gallaryRoutes);
+router.use('/contact-us', contactUsRoutes);
 
 module.exports = router;

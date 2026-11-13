@@ -1119,6 +1119,15 @@ const schemas = {
     description: { type: 'string', maxLength: 2000 },
     image: { type: 'string', format: 'binary', nullable: true },
   }),
+  ContactUsCreate: schemaObject(
+    {
+      name: { type: 'string', maxLength: 120, example: 'Amit Sharma' },
+      email: { type: 'string', format: 'email', example: 'amit@example.com' },
+      projectType: { type: 'string', maxLength: 120, example: 'Residential' },
+      details: { type: 'string', maxLength: 5000, example: 'Need a quote for a 3BHK villa project.' },
+    },
+    ['name', 'email', 'projectType', 'details']
+  ),
 
   // Response / model schemas for frontend
   NamedRef: modelSchema({
@@ -1665,6 +1674,15 @@ const schemas = {
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
+  ContactUs: modelSchema({
+    id: objectId,
+    name: { type: 'string', example: 'Amit Sharma' },
+    email: { type: 'string', format: 'email', example: 'amit@example.com' },
+    projectType: { type: 'string', example: 'Residential' },
+    details: { type: 'string', example: 'Need a quote for a 3BHK villa project.' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
 };
 
 const ref = (name) => namedRef(name);
@@ -1728,6 +1746,7 @@ const spec = {
     { name: 'LocalAmounts' },
     { name: 'ProjectDetails' },
     { name: 'Gallary' },
+    { name: 'ContactUs' },
   ],
   components: {
     securitySchemes: {
@@ -2804,6 +2823,33 @@ const spec = {
     },
     '/gallary/remove/{id}': {
       delete: operation('Gallary', 'Delete a gallary item', {
+        parameters: [pathParam()],
+      }),
+    },
+    '/contact-us': {
+      get: operation('ContactUs', 'List contact requests', {
+        parameters: [
+          ...paging,
+          query('projectType', { type: 'string' }),
+        ],
+        data: 'ContactUs',
+        list: true,
+      }),
+    },
+    '/contact-us/create': {
+      post: operation('ContactUs', 'Create a contact request', {
+        status: '201',
+        data: 'ContactUs',
+        body: jsonBody(ref('ContactUsCreate'), {
+          name: 'Amit Sharma',
+          email: 'amit@example.com',
+          projectType: 'Residential',
+          details: 'Need a quote for a 3BHK villa project.',
+        }),
+      }),
+    },
+    '/contact-us/remove/{id}': {
+      delete: operation('ContactUs', 'Delete a contact request', {
         parameters: [pathParam()],
       }),
     },

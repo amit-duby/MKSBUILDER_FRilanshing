@@ -66,6 +66,7 @@ const COLLECTIONS = {
   localAmounts: 'local_amounts',
   projectDetails: 'project_details',
   gallary: 'gallary',
+  contactUs: 'contact_us',
   attendance: 'attendance_records',
   counters: 'counters',
 };
