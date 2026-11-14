@@ -2,6 +2,7 @@ const {
   z,
   requestSchema,
   shortText,
+  phone,
 } = require('../../common/validators/zod');
 
 const credentials = {
@@ -12,6 +13,7 @@ const credentials = {
 const register = requestSchema({
   body: z.object({
     name: shortText(120),
+    phone: phone.optional(),
     ...credentials,
   }),
 });
@@ -68,7 +70,8 @@ const changePassword = requestSchema({
 
 const profile = requestSchema({
   body: z.object({
-    name: shortText(120),
+    name: shortText(120).optional(),
+    phone: phone.nullable().optional(),
   }),
 });
 

@@ -17,8 +17,8 @@ const { setAuthUser, invalidateAuthUser } = require('../../common/utils/authUser
 
 const BCRYPT_ROUNDS = 8;
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
-const LOGIN_SELECT = '+passwordHash +tokenVersion name email role avatar isActive';
-const REFRESH_SELECT = '+tokenVersion +refreshToken +refreshTokenExpiresAt name email role avatar isActive';
+const LOGIN_SELECT = '+passwordHash +tokenVersion name email phone role avatar isActive';
+const REFRESH_SELECT = '+tokenVersion +refreshToken +refreshTokenExpiresAt name email phone role avatar isActive';
 
 function schedulePasswordRehash(userId, password, currentHash) {
   let rounds;
@@ -125,6 +125,7 @@ function publicUser(user) {
     id: user.id,
     name: user.name,
     email: user.email,
+    phone: user.phone || null,
     role: user.role,
     avatar: user.avatar || null,
   };
@@ -161,6 +162,7 @@ async function register(body, actor) {
     const user = await User.create({
       name: body.name,
       email,
+      phone: body.phone || null,
       passwordHash: await bcrypt.hash(body.password, BCRYPT_ROUNDS),
       role: 'admin',
       tokenVersion: 0,
@@ -196,6 +198,7 @@ async function login(body) {
     id: String(user._id),
     name: user.name,
     email: user.email,
+    phone: user.phone || null,
     role: user.role,
     avatar: user.avatar || null,
     isActive: user.isActive,
@@ -268,6 +271,24 @@ async function updateAvatar(userId, file) {
     removeStoredAvatar(user.avatar);
     throw error;
   }
+  removeStoredAvatar(previous);
+  return publicUser(user);
+}
+
+async function deleteAvatar(userId) {
+  const user = await User.findById(userId);
+  if (!user || !user.isActive) {
+    throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+  }
+  assertAdmin(user);
+
+  if (!user.avatar) {
+    throw new AppError('No avatar image to delete', 404, 'NOT_FOUND');
+  }
+
+  const previous = user.avatar;
+  user.avatar = null;
+  await user.save();
   removeStoredAvatar(previous);
   return publicUser(user);
 }
@@ -424,6 +445,7 @@ module.exports = {
   refresh,
   me,
   updateAvatar,
+  deleteAvatar,
   logout,
   forgotPassword,
   resetPassword,

@@ -279,6 +279,7 @@ const schemas = {
     {
       name: { type: 'string', maxLength: 120, example: 'Owner' },
       email: { type: 'string', format: 'email', example: 'owner@mksbuilder.local' },
+      phone: { type: 'string', maxLength: 20, example: '+91 98765 43210' },
       password: { type: 'string', minLength: 8, maxLength: 128, example: 'ChangeMe123!' },
     },
     ['name', 'email', 'password']
@@ -1063,6 +1064,8 @@ const schemas = {
       actualEndDate: dateString,
       budgetAmount: { ...money, example: 5000000 },
       installmentType: { type: 'string', maxLength: 120, example: 'Monthly' },
+      projectImage: { type: 'string', nullable: true, example: 'https://cdn.example.com/projects/tower-a.jpg' },
+      bestProject: { type: 'boolean', example: false },
       clientInstallments: {
         type: 'array',
         items: namedRef('ProjectMoneyEntry'),
@@ -1086,6 +1089,8 @@ const schemas = {
     actualEndDate: { ...dateString, nullable: true },
     budgetAmount: { ...money, nullable: true },
     installmentType: { type: 'string', maxLength: 120, nullable: true },
+    projectImage: { type: 'string', nullable: true },
+    bestProject: { type: 'boolean' },
   }),
   ProjectMoneyEntryCreate: schemaObject(
     {
@@ -1128,6 +1133,21 @@ const schemas = {
     },
     ['name', 'email', 'projectType', 'details']
   ),
+  ContactDetailsCreate: schemaObject(
+    {
+      firstPhone: { type: 'string', example: '+91 98765 43210' },
+      email: { type: 'string', format: 'email', example: 'info@mksbuilder.com' },
+      secondPhone: { type: 'string', nullable: true, example: '+91 98765 00000' },
+      address: { type: 'string', maxLength: 1000, example: '12 Civil Lines, Lucknow' },
+    },
+    ['firstPhone', 'email', 'address']
+  ),
+  ContactDetailsUpdate: schemaObject({
+    firstPhone: { type: 'string', example: '+91 98765 43210' },
+    email: { type: 'string', format: 'email', example: 'info@mksbuilder.com' },
+    secondPhone: { type: 'string', nullable: true, example: '+91 98765 00000' },
+    address: { type: 'string', maxLength: 1000, example: '12 Civil Lines, Lucknow' },
+  }),
 
   // Response / model schemas for frontend
   NamedRef: modelSchema({
@@ -1438,6 +1458,7 @@ const schemas = {
     id: objectId,
     name: { type: 'string' },
     email: { type: 'string', format: 'email' },
+    phone: { type: 'string', nullable: true, example: '+91 98765 43210' },
     role: { type: 'string', example: 'admin' },
     avatar: { type: 'string', nullable: true },
   }),
@@ -1637,6 +1658,8 @@ const schemas = {
     clientPendingAmount: { ...money, nullable: true, description: 'Auto: budgetAmount - clientAmount' },
     moneySpend: { ...money, description: 'Auto: sum of projectSpends' },
     installmentType: { type: 'string', example: 'Monthly' },
+    projectImage: { type: 'string', nullable: true, example: 'https://cdn.example.com/projects/tower-a.jpg' },
+    bestProject: { type: 'boolean', example: false },
     clientInstallments: {
       type: 'array',
       items: {
@@ -1680,6 +1703,15 @@ const schemas = {
     email: { type: 'string', format: 'email', example: 'amit@example.com' },
     projectType: { type: 'string', example: 'Residential' },
     details: { type: 'string', example: 'Need a quote for a 3BHK villa project.' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  ContactDetails: modelSchema({
+    id: objectId,
+    firstPhone: { type: 'string', example: '+91 98765 43210' },
+    email: { type: 'string', format: 'email', example: 'info@mksbuilder.com' },
+    secondPhone: { type: 'string', nullable: true, example: '+91 98765 00000' },
+    address: { type: 'string', example: '12 Civil Lines, Lucknow' },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1747,6 +1779,7 @@ const spec = {
     { name: 'ProjectDetails' },
     { name: 'Gallary' },
     { name: 'ContactUs' },
+    { name: 'ContactDetails' },
   ],
   components: {
     securitySchemes: {
@@ -1812,6 +1845,7 @@ const spec = {
       post: operation('Auth', 'Upload a profile photo', {
         body: multipartBody(ref('AvatarUpload')),
       }),
+      delete: operation('Auth', 'Delete the profile photo'),
     },
     '/auth/logout': {
       post: operation('Auth', 'Log out and invalidate the current token'),
@@ -2693,6 +2727,7 @@ const spec = {
           ...paging,
           query('projectId', objectId),
           query('status', { type: 'string', enum: PROJECT_STATUS }),
+          query('bestProject', { type: 'boolean' }),
         ],
         data: 'ProjectDetail',
         list: true,
@@ -2711,6 +2746,8 @@ const spec = {
           startDate: '2026-04-01',
           budgetAmount: 5000000,
           installmentType: 'Monthly',
+          projectImage: 'https://cdn.example.com/projects/tower-a.jpg',
+          bestProject: true,
           clientInstallments: [
             { amount: 1000000, date: '2026-04-01', note: 'First installment' },
           ],
@@ -2733,6 +2770,8 @@ const spec = {
         body: jsonBody(ref('ProjectDetailUpdate'), {
           status: 'active',
           budgetAmount: 5500000,
+          projectImage: 'https://cdn.example.com/projects/tower-a.jpg',
+          bestProject: true,
         }),
       }),
     },
@@ -2853,6 +2892,40 @@ const spec = {
     '/contact-us/remove/{id}': {
       delete: operation('ContactUs', 'Delete a contact request', {
         auth: false,
+        parameters: [pathParam()],
+      }),
+    },
+    '/contact-details': {
+      get: operation('ContactDetails', 'List contact details', {
+        parameters: [...paging],
+        data: 'ContactDetails',
+        list: true,
+      }),
+    },
+    '/contact-details/create': {
+      post: operation('ContactDetails', 'Create contact details', {
+        status: '201',
+        data: 'ContactDetails',
+        body: jsonBody(ref('ContactDetailsCreate'), {
+          firstPhone: '+91 98765 43210',
+          email: 'info@mksbuilder.com',
+          secondPhone: '+91 98765 00000',
+          address: '12 Civil Lines, Lucknow',
+        }),
+      }),
+    },
+    '/contact-details/update/{id}': {
+      patch: operation('ContactDetails', 'Update contact details', {
+        parameters: [pathParam()],
+        data: 'ContactDetails',
+        body: jsonBody(ref('ContactDetailsUpdate'), {
+          firstPhone: '+91 98765 43210',
+          address: '12 Civil Lines, Lucknow',
+        }),
+      }),
+    },
+    '/contact-details/remove/{id}': {
+      delete: operation('ContactDetails', 'Delete contact details', {
         parameters: [pathParam()],
       }),
     },

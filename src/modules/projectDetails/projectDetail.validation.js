@@ -28,6 +28,8 @@ const createBody = z.object({
   actualEndDate: dateValue.optional(),
   budgetAmount: money.optional(),
   installmentType: optionalText(120),
+  projectImage: z.string().trim().min(1).nullable().optional(),
+  bestProject: z.boolean().optional(),
   clientInstallments: z.array(moneyEntry).max(100).optional(),
   projectSpends: z.array(moneyEntry).max(200).optional(),
 }).superRefine((data, ctx) => {
@@ -50,6 +52,8 @@ const updateBody = z.object({
   actualEndDate: dateValue.nullable().optional(),
   budgetAmount: money.nullable().optional(),
   installmentType: optionalText(120).nullable(),
+  projectImage: z.string().trim().min(1).nullable().optional(),
+  bestProject: z.boolean().optional(),
 });
 
 const moneyEntryBody = z.object({
@@ -68,6 +72,7 @@ module.exports = {
     query: listQuery({
       projectId: objectId.optional(),
       status: z.enum(PROJECT_STATUS).optional(),
+      bestProject: z.coerce.boolean().optional(),
     }),
   }),
   create: requestSchema({ body: createBody }),

@@ -33,6 +33,8 @@ const projectDetailSchema = new mongoose.Schema(
     /** Sum of projectSpends — kept in sync by the service */
     moneySpend: { type: Number, min: 0, default: 0 },
     installmentType: { type: String, trim: true, maxlength: 120, default: '' },
+    projectImage: { type: String, trim: true, default: null },
+    bestProject: { type: Boolean, default: false, index: true },
     clientInstallments: { type: [moneyEntrySchema], default: [] },
     projectSpends: { type: [moneyEntrySchema], default: [] },
   },

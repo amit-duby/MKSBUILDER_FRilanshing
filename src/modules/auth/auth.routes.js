@@ -21,6 +21,7 @@ router.post('/forgot-password', loginLimiter, validate(schema.forgotPassword), c
 router.post('/reset-password/:token', loginLimiter, validate(schema.resetPassword), controller.resetPassword);
 router.get('/me', asyncHandler(authenticate), controller.me);
 router.post('/avatar', asyncHandler(authenticate), avatarUpload, controller.updateAvatar);
+router.delete('/avatar', asyncHandler(authenticate), controller.deleteAvatar);
 router.post('/logout', asyncHandler(authenticate), controller.logout);
 router.post(
   '/change-password',

@@ -23,6 +23,8 @@ const UPDATE_FIELDS = [
   'actualEndDate',
   'budgetAmount',
   'installmentType',
+  'projectImage',
+  'bestProject',
 ];
 
 function pendingClientAmount(budgetAmount, clientAmount) {
@@ -148,6 +150,8 @@ async function create(body) {
       actualEndDate: body.actualEndDate ? startOfBusinessDay(body.actualEndDate) : undefined,
       budgetAmount: body.budgetAmount,
       installmentType: body.installmentType || '',
+      projectImage: body.projectImage || null,
+      bestProject: body.bestProject === true,
       clientInstallments,
       projectSpends,
       clientAmount: sumEntries(clientInstallments),
@@ -167,6 +171,7 @@ async function list(query) {
   const filter = {};
   if (query.projectId) filter.project = query.projectId;
   if (query.status) filter.status = query.status;
+  if (query.bestProject !== undefined) filter.bestProject = query.bestProject;
   if (query.search) {
     const pattern = containsRegex(query.search);
     filter.$or = [{ clientName: pattern }, { description: pattern }, { clientPhoneNo: pattern }];

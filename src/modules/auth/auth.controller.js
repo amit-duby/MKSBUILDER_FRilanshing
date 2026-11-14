@@ -27,6 +27,11 @@ const updateAvatar = asyncHandler(async (req, res) => {
   return ok(res, data, 'Avatar updated');
 });
 
+const deleteAvatar = asyncHandler(async (req, res) => {
+  const data = await authService.deleteAvatar(req.user.id);
+  return ok(res, data, 'Avatar deleted');
+});
+
 const logout = asyncHandler(async (req, res) => {
   await authService.logout(req.user.id);
   return ok(res, null, 'Logged out');
@@ -47,4 +52,15 @@ const changePassword = asyncHandler(async (req, res) => {
   return ok(res, data, 'Password changed');
 });
 
-module.exports = { register, login, refresh, me, updateAvatar, logout, forgotPassword, resetPassword, changePassword };
+module.exports = {
+  register,
+  login,
+  refresh,
+  me,
+  updateAvatar,
+  deleteAvatar,
+  logout,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+};
