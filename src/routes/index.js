@@ -36,6 +36,7 @@ router.get('/health', (_req, res) => {
 });
 
 router.use('/auth', authRoutes);
+router.use('/contact-us', contactUsRoutes);
 router.use(asyncHandler(authenticate));
 router.use('/dashboard', dashboardRoutes);
 router.use('/departments', departmentRoutes);
@@ -50,6 +51,5 @@ router.use('/accounts', accountRoutes);
 router.use('/impress-amounts', impressAmountRoutes);
 router.use('/local-amounts', localAmountRoutes);
 router.use('/gallary', gallaryRoutes);
-router.use('/contact-us', contactUsRoutes);
 
 module.exports = router;

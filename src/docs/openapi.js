@@ -2828,6 +2828,7 @@ const spec = {
     },
     '/contact-us': {
       get: operation('ContactUs', 'List contact requests', {
+        auth: false,
         parameters: [
           ...paging,
           query('projectType', { type: 'string' }),
@@ -2838,6 +2839,7 @@ const spec = {
     },
     '/contact-us/create': {
       post: operation('ContactUs', 'Create a contact request', {
+        auth: false,
         status: '201',
         data: 'ContactUs',
         body: jsonBody(ref('ContactUsCreate'), {
@@ -2850,6 +2852,7 @@ const spec = {
     },
     '/contact-us/remove/{id}': {
       delete: operation('ContactUs', 'Delete a contact request', {
+        auth: false,
         parameters: [pathParam()],
       }),
     },
