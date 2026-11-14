@@ -17,6 +17,8 @@ const localAmountRoutes = require('../modules/localAmount/localAmount.routes');
 const gallaryRoutes = require('../modules/gallary/gallary.routes');
 const contactUsRoutes = require('../modules/contactus/contactus.routes');
 const contactDetailsRoutes = require('../modules/contactdetails/contactdetails.routes');
+const companyRoutes = require('../modules/company/company.routes');
+const employeeController = require('../modules/employees/employee.controller');
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes');
 
 const router = express.Router();
@@ -38,6 +40,8 @@ router.get('/health', (_req, res) => {
 
 router.use('/auth', authRoutes);
 router.use('/contact-us', contactUsRoutes);
+// Static cached file — no auth/DB so it can respond in a few ms.
+router.get('/employees/bulk-template', employeeController.downloadBulkTemplate);
 router.use(asyncHandler(authenticate));
 router.use('/dashboard', dashboardRoutes);
 router.use('/departments', departmentRoutes);
@@ -53,5 +57,6 @@ router.use('/impress-amounts', impressAmountRoutes);
 router.use('/local-amounts', localAmountRoutes);
 router.use('/gallary', gallaryRoutes);
 router.use('/contact-details', contactDetailsRoutes);
+router.use('/companies', companyRoutes);
 
 module.exports = router;

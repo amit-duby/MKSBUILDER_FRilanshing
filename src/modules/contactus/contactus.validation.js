@@ -5,11 +5,13 @@ const {
   listQuery,
   shortText,
   email,
+  phone,
 } = require('../../common/validators/zod');
 
 const createBody = z.object({
   name: shortText(120),
   email,
+  phone,
   projectType: shortText(120),
   details: z.string().trim().min(1).max(5000),
 });

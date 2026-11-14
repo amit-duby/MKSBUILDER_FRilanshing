@@ -6,6 +6,7 @@ const contactUsSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 120 },
     email: { type: String, required: true, lowercase: true, trim: true, maxlength: 160 },
+    phone: { type: String, required: true, trim: true, maxlength: 20 },
     projectType: { type: String, required: true, trim: true, maxlength: 120 },
     details: { type: String, required: true, trim: true, maxlength: 5000 },
   },

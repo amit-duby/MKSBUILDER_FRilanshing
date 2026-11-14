@@ -68,6 +68,7 @@ const COLLECTIONS = {
   gallary: 'gallary',
   contactUs: 'contact_us',
   contactDetails: 'contact_details',
+  companies: 'companies',
   attendance: 'attendance_records',
   counters: 'counters',
 };

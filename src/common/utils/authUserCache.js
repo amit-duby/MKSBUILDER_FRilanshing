@@ -1,4 +1,5 @@
-const DEFAULT_TTL_MS = 60_000;
+// Keep auth warm longer to avoid an Atlas User lookup on every API call.
+const DEFAULT_TTL_MS = 15 * 60_000;
 const cache = new Map();
 
 function setAuthUser(userId, user, ttlMs = DEFAULT_TTL_MS) {

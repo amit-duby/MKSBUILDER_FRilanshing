@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const AppError = require('../../common/errors/AppError');
 const BaseRepository = require('../../common/repository/baseRepository');
 const requireDoc = require('../../common/utils/requireDoc');
@@ -7,6 +8,7 @@ const {
   containsRegex,
   parseSort,
 } = require('../../common/utils/helpers');
+const { COLLECTIONS } = require('../../config/constants');
 const Employee = require('./employee.model');
 const Assignment = require('./assignment.model');
 const Department = require('../departments/department.model');
@@ -18,6 +20,34 @@ const SORT_FIELDS = ['fullName', 'code', 'joiningDate', 'createdAt', 'designatio
 const POPULATE = [
   { path: 'department', select: 'name code isActive' },
 ];
+
+function toObjectId(value) {
+  if (!value) return null;
+  if (value instanceof mongoose.Types.ObjectId) return value;
+  if (mongoose.isValidObjectId(value)) return new mongoose.Types.ObjectId(String(value));
+  return null;
+}
+
+function presentListItem(doc) {
+  if (doc._id && doc.id == null) doc.id = String(doc._id);
+  delete doc.__v;
+  if (doc.department) {
+    if (doc.department._id && doc.department.id == null) {
+      doc.department.id = String(doc.department._id);
+    }
+  }
+  if (Array.isArray(doc.currentAssignments)) {
+    for (const assignment of doc.currentAssignments) {
+      if (assignment._id && assignment.id == null) assignment.id = String(assignment._id);
+      if (assignment.site && assignment.site._id && assignment.site.id == null) {
+        assignment.site.id = String(assignment.site._id);
+      }
+    }
+  } else {
+    doc.currentAssignments = [];
+  }
+  return doc;
+}
 
 async function getActive(id) {
   const doc = await Employee.findById(id).populate(POPULATE).lean({ virtuals: true });
@@ -194,32 +224,42 @@ async function loadCurrentAssignments(employeeIds) {
     employee: { $in: employeeIds },
     isCurrent: true,
   })
+    .select('employee site startDate endDate isCurrent remarks')
     .populate('site', 'name code status project')
-    .sort({ startDate: -1 });
+    .sort({ startDate: -1 })
+    .lean({ virtuals: true });
 
   const byEmployee = new Map();
   for (const assignment of assignments) {
+    if (assignment._id && assignment.id == null) assignment.id = String(assignment._id);
+    if (assignment.site && assignment.site._id && assignment.site.id == null) {
+      assignment.site.id = String(assignment.site._id);
+    }
     const key = String(assignment.employee);
     const list = byEmployee.get(key) || [];
-    list.push(typeof assignment.toJSON === 'function' ? assignment.toJSON() : assignment);
+    list.push(assignment);
     byEmployee.set(key, list);
   }
   return byEmployee;
 }
 
 async function list(query) {
-  const filter = {};
-  if (query.departmentId) filter.department = query.departmentId;
-  if (query.status) filter.status = query.status;
-  if (query.employmentType) filter.employmentType = query.employmentType;
-  if (query.category) filter.category = query.category;
-  if (query.siteId) {
-    const ids = await Assignment.find({ site: query.siteId, isCurrent: true }).distinct('employee');
-    filter._id = { $in: ids };
+  const page = Number(query.page) || 1;
+  const limit = Number(query.limit) || 20;
+  const skip = (page - 1) * limit;
+  const sort = parseSort(query.sort, SORT_FIELDS);
+
+  const match = {};
+  if (query.departmentId) {
+    const departmentId = toObjectId(query.departmentId);
+    if (departmentId) match.department = departmentId;
   }
+  if (query.status) match.status = query.status;
+  if (query.employmentType) match.employmentType = query.employmentType;
+  if (query.category) match.category = query.category;
   if (query.search) {
     const pattern = containsRegex(query.search);
-    filter.$or = [
+    match.$or = [
       { fullName: pattern },
       { code: pattern },
       { phone: pattern },
@@ -229,25 +269,116 @@ async function list(query) {
     ];
   }
 
-  const result = await repo.paginate({
-    filter,
-    page: query.page,
-    limit: query.limit,
-    sort: parseSort(query.sort, SORT_FIELDS),
-    populate: POPULATE,
+  const siteId = query.siteId ? toObjectId(query.siteId) : null;
+  const pipeline = [];
+
+  if (Object.keys(match).length) pipeline.push({ $match: match });
+
+  // Optional site filter without a separate distinct() round-trip.
+  if (siteId) {
+    pipeline.push(
+      {
+        $lookup: {
+          from: COLLECTIONS.employeeAssignments,
+          let: { empId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $eq: ['$employee', '$$empId'] },
+                    { $eq: ['$isCurrent', true] },
+                    { $eq: ['$site', siteId] },
+                  ],
+                },
+              },
+            },
+            { $limit: 1 },
+            { $project: { _id: 1 } },
+          ],
+          as: '_siteMatch',
+        },
+      },
+      { $match: { '_siteMatch.0': { $exists: true } } },
+      { $project: { _siteMatch: 0 } }
+    );
+  }
+
+  // Single Atlas round-trip for page items + total + department + assignments.
+  pipeline.push({
+    $facet: {
+      items: [
+        { $sort: sort },
+        { $skip: skip },
+        { $limit: limit },
+        {
+          $lookup: {
+            from: COLLECTIONS.departments,
+            localField: 'department',
+            foreignField: '_id',
+            pipeline: [{ $project: { name: 1, code: 1, isActive: 1 } }],
+            as: 'department',
+          },
+        },
+        { $unwind: { path: '$department', preserveNullAndEmptyArrays: true } },
+        {
+          $lookup: {
+            from: COLLECTIONS.employeeAssignments,
+            let: { empId: '$_id' },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $eq: ['$employee', '$$empId'] },
+                      { $eq: ['$isCurrent', true] },
+                    ],
+                  },
+                },
+              },
+              { $sort: { startDate: -1 } },
+              {
+                $lookup: {
+                  from: COLLECTIONS.sites,
+                  localField: 'site',
+                  foreignField: '_id',
+                  pipeline: [{ $project: { name: 1, code: 1, status: 1, project: 1 } }],
+                  as: 'site',
+                },
+              },
+              { $unwind: { path: '$site', preserveNullAndEmptyArrays: true } },
+              {
+                $project: {
+                  employee: 1,
+                  site: 1,
+                  startDate: 1,
+                  endDate: 1,
+                  isCurrent: 1,
+                  remarks: 1,
+                },
+              },
+            ],
+            as: 'currentAssignments',
+          },
+        },
+      ],
+      meta: [{ $count: 'total' }],
+    },
   });
 
-  const byEmployee = await loadCurrentAssignments(result.items.map((item) => item._id || item.id));
-  result.items = result.items.map((item) => {
-    const json = typeof item.toJSON === 'function' ? item.toJSON() : item;
-    json.currentAssignments = byEmployee.get(String(item.id || item._id)) || [];
-    return json;
-  });
-  return result;
-}
+  const [facet] = await Employee.aggregate(pipeline);
+  const items = (facet?.items || []).map(presentListItem);
+  const total = facet?.meta?.[0]?.total || 0;
 
-async function currentAssignments(employeeId) {
-  const byEmployee = await loadCurrentAssignments([employeeId]);
+  return {
+    items,
+    meta: {
+      page,
+      limit,
+      total,
+      totalPages: total === 0 ? 1 : Math.ceil(total / limit),
+    },
+  };
   return byEmployee.get(String(employeeId)) || [];
 }
 

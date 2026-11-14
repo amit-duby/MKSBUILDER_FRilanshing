@@ -22,6 +22,11 @@ const me = asyncHandler(async (req, res) => {
   return ok(res, data, 'Profile fetched');
 });
 
+const updateProfile = asyncHandler(async (req, res) => {
+  const data = await authService.updateProfile(req.user.id, req.body);
+  return ok(res, data, 'Profile updated');
+});
+
 const updateAvatar = asyncHandler(async (req, res) => {
   const data = await authService.updateAvatar(req.user.id, req.file);
   return ok(res, data, 'Avatar updated');
@@ -57,6 +62,7 @@ module.exports = {
   login,
   refresh,
   me,
+  updateProfile,
   updateAvatar,
   deleteAvatar,
   logout,

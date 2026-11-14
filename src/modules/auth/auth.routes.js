@@ -20,6 +20,7 @@ router.post('/refresh', loginLimiter, validate(schema.refresh), controller.refre
 router.post('/forgot-password', loginLimiter, validate(schema.forgotPassword), controller.forgotPassword);
 router.post('/reset-password/:token', loginLimiter, validate(schema.resetPassword), controller.resetPassword);
 router.get('/me', asyncHandler(authenticate), controller.me);
+router.patch('/profile', asyncHandler(authenticate), validate(schema.profile), controller.updateProfile);
 router.post('/avatar', asyncHandler(authenticate), avatarUpload, controller.updateAvatar);
 router.delete('/avatar', asyncHandler(authenticate), controller.deleteAvatar);
 router.post('/logout', asyncHandler(authenticate), controller.logout);

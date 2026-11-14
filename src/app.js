@@ -64,10 +64,17 @@ app.use(publicUploads);
 app.use(pinoHttp({
   logger,
   genReqId: (req) => req.id,
+  // Keep access logs tiny — full header dumps slow pino-pretty in development.
   serializers: {
     req(req) {
       return { id: req.id, method: req.method, url: redactToken(req.url) };
     },
+    res(res) {
+      return { statusCode: res.statusCode };
+    },
+  },
+  customSuccessMessage(req, res) {
+    return `${req.method} ${redactToken(req.url)} ${res.statusCode}`;
   },
 }));
 

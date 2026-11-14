@@ -2,6 +2,7 @@ const {
   z,
   requestSchema,
   shortText,
+  optionalText,
   phone,
 } = require('../../common/validators/zod');
 
@@ -71,8 +72,27 @@ const changePassword = requestSchema({
 const profile = requestSchema({
   body: z.object({
     name: shortText(120).optional(),
-    phone: phone.nullable().optional(),
-  }),
+    phone: z.union([phone, z.literal('')]).nullable().optional(),
+    address: optionalText(300),
+    city: optionalText(80),
+    state: optionalText(80),
+    pincode: optionalText(12),
+    country: optionalText(80),
+  }).refine(
+    (data) => ['name', 'phone', 'address', 'city', 'state', 'pincode', 'country']
+      .some((field) => data[field] !== undefined),
+    {
+      message: 'Provide at least one profile field (name, phone, address, city, state, pincode, country)',
+    }
+  ),
 });
 
-module.exports = { register, login, refresh, forgotPassword, resetPassword, changePassword, profile };
+module.exports = {
+  register,
+  login,
+  refresh,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+  profile,
+};

@@ -32,6 +32,29 @@ async function authenticate(req, _res, next) {
     return next();
   }
 
+  // Fast path: access token already carries identity claims.
+  // Avoids an Atlas User.findById on every cold request (~300-700ms).
+  // Logout still bumps tokenVersion; clients must drop the old access token.
+  if (payload.sub && payload.role && payload.email != null) {
+    const user = {
+      id: String(payload.sub),
+      email: payload.email,
+      name: payload.name || '',
+      role: payload.role,
+      isActive: true,
+      tokenVersion: Number(payload.tv) || 0,
+    };
+    assertAdmin(user);
+    setAuthUser(user.id, user);
+    req.user = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
+    return next();
+  }
+
   const user = await User.findById(payload.sub).select('+tokenVersion');
   if (!user || !user.isActive || user.tokenVersion !== payload.tv) {
     throw new AppError('Authentication required', 401, 'UNAUTHORIZED');

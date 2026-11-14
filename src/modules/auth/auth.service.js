@@ -17,8 +17,9 @@ const { setAuthUser, invalidateAuthUser } = require('../../common/utils/authUser
 
 const BCRYPT_ROUNDS = 8;
 const RESET_TOKEN_TTL_MS = 15 * 60 * 1000;
-const LOGIN_SELECT = '+passwordHash +tokenVersion name email phone role avatar isActive';
-const REFRESH_SELECT = '+tokenVersion +refreshToken +refreshTokenExpiresAt name email phone role avatar isActive';
+const LOGIN_SELECT = '+passwordHash +tokenVersion name email phone address city state pincode country role avatar isActive';
+const REFRESH_SELECT = '+tokenVersion +refreshToken +refreshTokenExpiresAt name email phone address city state pincode country role avatar isActive';
+const PROFILE_FIELDS = ['name', 'phone', 'address', 'city', 'state', 'pincode', 'country'];
 
 function schedulePasswordRehash(userId, password, currentHash) {
   let rounds;
@@ -126,6 +127,11 @@ function publicUser(user) {
     name: user.name,
     email: user.email,
     phone: user.phone || null,
+    address: user.address || '',
+    city: user.city || '',
+    state: user.state || '',
+    pincode: user.pincode || '',
+    country: user.country || '',
     role: user.role,
     avatar: user.avatar || null,
   };
@@ -199,6 +205,11 @@ async function login(body) {
     name: user.name,
     email: user.email,
     phone: user.phone || null,
+    address: user.address || '',
+    city: user.city || '',
+    state: user.state || '',
+    pincode: user.pincode || '',
+    country: user.country || '',
     role: user.role,
     avatar: user.avatar || null,
     isActive: user.isActive,
@@ -272,6 +283,54 @@ async function updateAvatar(userId, file) {
     throw error;
   }
   removeStoredAvatar(previous);
+  setAuthUser(user.id, user);
+  return publicUser(user);
+}
+
+async function updateProfile(userId, body = {}) {
+  const provided = PROFILE_FIELDS.filter((field) => Object.prototype.hasOwnProperty.call(body, field));
+  if (!provided.length) {
+    throw new AppError(
+      'Provide at least one profile field (name, phone, address, city, state, pincode, country)',
+      400,
+      'BAD_REQUEST'
+    );
+  }
+
+  const user = await User.findById(userId);
+  if (!user || !user.isActive) {
+    throw new AppError('Authentication required', 401, 'UNAUTHORIZED');
+  }
+  assertAdmin(user);
+
+  if (Object.prototype.hasOwnProperty.call(body, 'name')) {
+    if (body.name == null || String(body.name).trim() === '') {
+      throw new AppError('Name cannot be empty', 400, 'BAD_REQUEST');
+    }
+    user.name = String(body.name).trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'phone')) {
+    const phoneValue = body.phone == null ? null : String(body.phone).trim();
+    user.phone = phoneValue || null;
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'address')) {
+    user.address = body.address == null ? '' : String(body.address).trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'city')) {
+    user.city = body.city == null ? '' : String(body.city).trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'state')) {
+    user.state = body.state == null ? '' : String(body.state).trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'pincode')) {
+    user.pincode = body.pincode == null ? '' : String(body.pincode).trim();
+  }
+  if (Object.prototype.hasOwnProperty.call(body, 'country')) {
+    user.country = body.country == null ? '' : String(body.country).trim();
+  }
+
+  await user.save();
+  setAuthUser(user.id, user);
   return publicUser(user);
 }
 
@@ -444,6 +503,7 @@ module.exports = {
   login,
   refresh,
   me,
+  updateProfile,
   updateAvatar,
   deleteAvatar,
   logout,

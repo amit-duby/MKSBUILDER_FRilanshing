@@ -1,12 +1,14 @@
 const express = require('express');
 const validate = require('../../common/middleware/validate');
 const { employeeUpload } = require('../../common/middleware/employeeUpload');
+const { employeeBulkUpload } = require('../../common/middleware/employeeBulkUpload');
 const schema = require('./employee.validation');
 const controller = require('./employee.controller');
 
 const router = express.Router();
 
 router.get('/', validate(schema.list), controller.list);
+router.post('/bulk-upload', employeeBulkUpload, validate(schema.bulkUpload), controller.bulkUpload);
 router.post('/create', employeeUpload, validate(schema.create), controller.create);
 router.get('/:id/assignments', validate(schema.assignments), controller.listAssignments);
 router.post('/:id/assignments', validate(schema.assign), controller.assign);

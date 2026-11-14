@@ -25,6 +25,8 @@ const assignmentSchema = new mongoose.Schema(
 );
 
 assignmentSchema.index({ employee: 1, site: 1, isCurrent: 1 });
+assignmentSchema.index({ employee: 1, isCurrent: 1, startDate: -1 });
+assignmentSchema.index({ site: 1, isCurrent: 1 });
 
 applyJson(assignmentSchema);
 

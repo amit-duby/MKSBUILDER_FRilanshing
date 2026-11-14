@@ -320,6 +320,55 @@ const schemas = {
     { avatar: { type: 'string', format: 'binary', description: 'JPEG, PNG, or WebP up to 2 MB' } },
     ['avatar']
   ),
+  ProfileUpdate: schemaObject({
+    name: { type: 'string', maxLength: 120, example: 'Owner' },
+    phone: { type: 'string', maxLength: 20, nullable: true, example: '+91 98765 43210' },
+    address: { type: 'string', maxLength: 300, example: '12 Civil Lines' },
+    city: { type: 'string', maxLength: 80, example: 'Lucknow' },
+    state: { type: 'string', maxLength: 80, example: 'Uttar Pradesh' },
+    pincode: { type: 'string', maxLength: 12, example: '226001' },
+    country: { type: 'string', maxLength: 80, example: 'India' },
+  }),
+  EmployeeBulkUpload: schemaObject(
+    {
+      file: {
+        type: 'string',
+        format: 'binary',
+        description: 'Excel .xlsx/.xls up to 5 MB. Use /employees/bulk-template first.',
+      },
+    },
+    ['file']
+  ),
+  EmployeeBulkUploadResult: modelSchema({
+    dryRun: { type: 'boolean' },
+    totalRows: { type: 'integer' },
+    createdCount: { type: 'integer' },
+    failedCount: { type: 'integer' },
+    validCount: { type: 'integer' },
+    created: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          row: { type: 'integer' },
+          id: objectId,
+          code: { type: 'string' },
+          fullName: { type: 'string' },
+        },
+      },
+    },
+    errors: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          row: { type: 'integer' },
+          fullName: { type: 'string', nullable: true },
+          message: { type: 'string' },
+        },
+      },
+    },
+  }),
 
   DepartmentCreate: schemaObject(
     {
@@ -1128,10 +1177,11 @@ const schemas = {
     {
       name: { type: 'string', maxLength: 120, example: 'Amit Sharma' },
       email: { type: 'string', format: 'email', example: 'amit@example.com' },
+      phone: { type: 'string', maxLength: 20, example: '+91 98765 43210' },
       projectType: { type: 'string', maxLength: 120, example: 'Residential' },
       details: { type: 'string', maxLength: 5000, example: 'Need a quote for a 3BHK villa project.' },
     },
-    ['name', 'email', 'projectType', 'details']
+    ['name', 'email', 'phone', 'projectType', 'details']
   ),
   ContactDetailsCreate: schemaObject(
     {
@@ -1148,6 +1198,82 @@ const schemas = {
     secondPhone: { type: 'string', nullable: true, example: '+91 98765 00000' },
     address: { type: 'string', maxLength: 1000, example: '12 Civil Lines, Lucknow' },
   }),
+  CompanyAddress: schemaObject({
+    addressLine1: { type: 'string' },
+    addressLine2: { type: 'string' },
+    city: { type: 'string' },
+    state: { type: 'string' },
+    pincode: { type: 'string' },
+    country: { type: 'string' },
+  }),
+  CompanyCreate: schemaObject(
+    {
+      companyName: { type: 'string', maxLength: 160, example: 'MKS Builders Pvt Ltd' },
+      logo: { type: 'string', nullable: true },
+      businessType: { type: 'string', example: 'Construction' },
+      description: { type: 'string', example: 'Civil and infrastructure contractor' },
+      establishedYear: { type: 'integer', example: 2012 },
+      contact: {
+        type: 'object',
+        properties: {
+          email: { type: 'string', format: 'email' },
+          phone: { type: 'string' },
+          alternatePhone: { type: 'string' },
+          website: { type: 'string' },
+        },
+      },
+      registration: {
+        type: 'object',
+        properties: {
+          gstin: { type: 'string' },
+          pan: { type: 'string' },
+          cin: { type: 'string' },
+          tan: { type: 'string' },
+          registrationNumber: { type: 'string' },
+        },
+      },
+      registeredAddress: namedRef('CompanyAddress'),
+      officeAddress: namedRef('CompanyAddress'),
+      bankDetails: {
+        type: 'object',
+        properties: {
+          bankName: { type: 'string' },
+          accountHolderName: { type: 'string' },
+          accountNumber: { type: 'string' },
+          ifscCode: { type: 'string' },
+          branchName: { type: 'string' },
+        },
+      },
+    },
+    ['companyName']
+  ),
+  CompanyUpdate: schemaObject({
+    companyName: { type: 'string', maxLength: 160 },
+    logo: { type: 'string', nullable: true },
+    businessType: { type: 'string' },
+    description: { type: 'string' },
+    establishedYear: { type: 'integer', nullable: true },
+    contact: { type: 'object' },
+    registration: { type: 'object' },
+    registeredAddress: namedRef('CompanyAddress'),
+    officeAddress: namedRef('CompanyAddress'),
+    bankDetails: { type: 'object' },
+  }),
+  CompanyCreateForm: schemaObject(
+    {
+      companyName: { type: 'string', maxLength: 160 },
+      logo: { type: 'string', format: 'binary', description: 'JPEG, PNG, or WebP up to 2 MB' },
+      businessType: { type: 'string' },
+      description: { type: 'string' },
+      establishedYear: { type: 'integer' },
+      contact: { type: 'string', description: 'JSON string of contact object' },
+      registration: { type: 'string', description: 'JSON string of registration object' },
+      registeredAddress: { type: 'string', description: 'JSON string of address object' },
+      officeAddress: { type: 'string', description: 'JSON string of address object' },
+      bankDetails: { type: 'string', description: 'JSON string of bank details object' },
+    },
+    ['companyName']
+  ),
 
   // Response / model schemas for frontend
   NamedRef: modelSchema({
@@ -1459,6 +1585,11 @@ const schemas = {
     name: { type: 'string' },
     email: { type: 'string', format: 'email' },
     phone: { type: 'string', nullable: true, example: '+91 98765 43210' },
+    address: { type: 'string', example: '12 Civil Lines' },
+    city: { type: 'string', example: 'Lucknow' },
+    state: { type: 'string', example: 'Uttar Pradesh' },
+    pincode: { type: 'string', example: '226001' },
+    country: { type: 'string', example: 'India' },
     role: { type: 'string', example: 'admin' },
     avatar: { type: 'string', nullable: true },
   }),
@@ -1701,6 +1832,7 @@ const schemas = {
     id: objectId,
     name: { type: 'string', example: 'Amit Sharma' },
     email: { type: 'string', format: 'email', example: 'amit@example.com' },
+    phone: { type: 'string', example: '+91 98765 43210' },
     projectType: { type: 'string', example: 'Residential' },
     details: { type: 'string', example: 'Need a quote for a 3BHK villa project.' },
     createdAt: dateTimeString,
@@ -1712,6 +1844,21 @@ const schemas = {
     email: { type: 'string', format: 'email', example: 'info@mksbuilder.com' },
     secondPhone: { type: 'string', nullable: true, example: '+91 98765 00000' },
     address: { type: 'string', example: '12 Civil Lines, Lucknow' },
+    createdAt: dateTimeString,
+    updatedAt: dateTimeString,
+  }),
+  Company: modelSchema({
+    id: objectId,
+    companyName: { type: 'string', example: 'MKS Builders Pvt Ltd' },
+    logo: { type: 'string', nullable: true },
+    businessType: { type: 'string', example: 'Construction' },
+    description: { type: 'string' },
+    establishedYear: { type: 'integer', example: 2012 },
+    contact: { type: 'object' },
+    registration: { type: 'object' },
+    registeredAddress: namedRef('CompanyAddress'),
+    officeAddress: namedRef('CompanyAddress'),
+    bankDetails: { type: 'object' },
     createdAt: dateTimeString,
     updatedAt: dateTimeString,
   }),
@@ -1780,6 +1927,7 @@ const spec = {
     { name: 'Gallary' },
     { name: 'ContactUs' },
     { name: 'ContactDetails' },
+    { name: 'Companies' },
   ],
   components: {
     securitySchemes: {
@@ -1839,10 +1987,25 @@ const spec = {
       }),
     },
     '/auth/me': {
-      get: operation('Auth', 'Current profile'),
+      get: operation('Auth', 'Current profile', { data: 'AuthUser' }),
+    },
+    '/auth/profile': {
+      patch: operation('Auth', 'Update profile fields (name, phone)', {
+        data: 'AuthUser',
+        body: jsonBody(ref('ProfileUpdate'), {
+          name: 'Owner',
+          phone: '+91 98765 43210',
+          address: '12 Civil Lines',
+          city: 'Lucknow',
+          state: 'Uttar Pradesh',
+          pincode: '226001',
+          country: 'India',
+        }),
+      }),
     },
     '/auth/avatar': {
       post: operation('Auth', 'Upload a profile photo', {
+        data: 'AuthUser',
         body: multipartBody(ref('AvatarUpload')),
       }),
       delete: operation('Auth', 'Delete the profile photo'),
@@ -1970,6 +2133,20 @@ const spec = {
         ],
         data: 'Employee',
         list: true,
+      }),
+    },
+    '/employees/bulk-template': {
+      get: operation('Employees', 'Download employee Excel bulk-upload template', {
+        auth: false,
+      }),
+    },
+    '/employees/bulk-upload': {
+      post: operation('Employees', 'Bulk create employees from Excel', {
+        parameters: [
+          query('dryRun', { type: 'boolean', description: 'Validate only, do not insert' }),
+        ],
+        data: 'EmployeeBulkUploadResult',
+        body: multipartBody(ref('EmployeeBulkUpload')),
       }),
     },
     '/employees/create': {
@@ -2884,6 +3061,7 @@ const spec = {
         body: jsonBody(ref('ContactUsCreate'), {
           name: 'Amit Sharma',
           email: 'amit@example.com',
+          phone: '+91 98765 43210',
           projectType: 'Residential',
           details: 'Need a quote for a 3BHK villa project.',
         }),
@@ -2926,6 +3104,66 @@ const spec = {
     },
     '/contact-details/remove/{id}': {
       delete: operation('ContactDetails', 'Delete contact details', {
+        parameters: [pathParam()],
+      }),
+    },
+    '/companies': {
+      get: operation('Companies', 'List companies', {
+        parameters: [...paging],
+        data: 'Company',
+        list: true,
+      }),
+    },
+    '/companies/create': {
+      post: operation('Companies', 'Create a company', {
+        status: '201',
+        data: 'Company',
+        body: bothBodies(
+          ref('CompanyCreate'),
+          {
+            companyName: 'MKS Builders Pvt Ltd',
+            businessType: 'Construction',
+            establishedYear: 2012,
+            contact: {
+              email: 'info@mksbuilder.com',
+              phone: '+91 98765 43210',
+              website: 'https://mksbuilder.com',
+            },
+            registration: {
+              gstin: '09AAAAA0000A1Z5',
+              pan: 'AAAAA0000A',
+            },
+            registeredAddress: {
+              addressLine1: '12 Civil Lines',
+              city: 'Lucknow',
+              state: 'Uttar Pradesh',
+              pincode: '226001',
+              country: 'India',
+            },
+          },
+          ref('CompanyCreateForm')
+        ),
+      }),
+    },
+    '/companies/get-by-id/{id}': {
+      get: operation('Companies', 'Get a company', {
+        parameters: [pathParam()],
+        data: 'Company',
+      }),
+    },
+    '/companies/update/{id}': {
+      patch: operation('Companies', 'Update a company', {
+        parameters: [pathParam()],
+        data: 'Company',
+        body: bothBodies(
+          ref('CompanyUpdate'),
+          { companyName: 'MKS Builders Pvt Ltd', businessType: 'Infrastructure' },
+          ref('CompanyCreateForm')
+        ),
+      }),
+    },
+    '/companies/remove/{id}': {
+      delete: operation('Companies', 'Delete a company', {
         parameters: [pathParam()],
       }),
     },

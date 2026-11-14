@@ -134,6 +134,12 @@ const assignmentParams = z.object({
   assignmentId: objectId,
 });
 
+const bulkUpload = requestSchema({
+  query: z.object({
+    dryRun: z.enum(['true', 'false']).optional(),
+  }),
+});
+
 module.exports = {
   list: requestSchema({
     query: listQuery({
@@ -145,6 +151,7 @@ module.exports = {
     }),
   }),
   create: requestSchema({ body: createBody }),
+  createBody,
   update: requestSchema({ params: idParams, body: updateBody }),
   byId: requestSchema({ params: idParams }),
   assign: requestSchema({ params: idParams, body: assignBody }),
@@ -155,4 +162,5 @@ module.exports = {
       current: z.enum(['true', 'false']).optional().transform((value) => (value === undefined ? undefined : value === 'true')),
     }),
   }),
+  bulkUpload,
 };

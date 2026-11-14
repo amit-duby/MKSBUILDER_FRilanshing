@@ -8,10 +8,11 @@ async function connectDatabase(uri) {
   await mongoose.connect(uri, {
     autoIndex: true,
     serverSelectionTimeoutMS: isSrv ? 15000 : 5000,
-    minPoolSize: 2,
-    maxPoolSize: 10,
+    // Keep a warmer pool for Atlas — cold connections add hundreds of ms per request.
+    minPoolSize: isSrv ? 5 : 2,
+    maxPoolSize: isSrv ? 20 : 10,
     maxIdleTimeMS: 0,
-    ...(isSrv ? {} : { directConnection: true, family: 4 }),
+    ...(isSrv ? { maxConnecting: 5 } : { directConnection: true, family: 4 }),
   });
 
   logger.info(

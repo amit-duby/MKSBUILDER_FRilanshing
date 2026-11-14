@@ -16,6 +16,7 @@ async function create(body) {
   const doc = await repo.create({
     name: body.name,
     email: body.email.toLowerCase(),
+    phone: body.phone,
     projectType: body.projectType,
     details: body.details,
   });
@@ -29,6 +30,7 @@ async function list(query) {
     filter.$or = [
       { name: pattern },
       { email: pattern },
+      { phone: pattern },
       { projectType: pattern },
       { details: pattern },
     ];
